@@ -4,6 +4,13 @@ User-facing changes per release. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); dates are when the
 tag was cut.
 
+## [Unreleased]
+
+### Added
+
+- Choose SEK in Settings → Providers. Cost totals, value comparisons, and
+  model breakdowns convert from the same cached USD exchange-rate table.
+
 ## [0.2.5] - 2026-09-10
 
 ### Added

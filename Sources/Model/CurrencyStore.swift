@@ -11,6 +11,7 @@ enum DisplayCurrency: String, CaseIterable, Codable, Identifiable {
     case cad = "CAD"
     case aud = "AUD"
     case chf = "CHF"
+    case sek = "SEK"
 
     var id: String { rawValue }
 
@@ -24,6 +25,7 @@ enum DisplayCurrency: String, CaseIterable, Codable, Identifiable {
         case .cad: "C$"
         case .aud: "A$"
         case .chf: "CHF "
+        case .sek: "SEK "
         }
     }
 

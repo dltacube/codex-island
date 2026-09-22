@@ -11,7 +11,7 @@ struct CurrencyStoreTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let data = Data("""
         {"result":"success","base_code":"USD","time_last_update_unix":1700000000,
-         "rates":{"USD":1,"EUR":0.9,"GBP":0.8,"CNY":7,"JPY":150,"KRW":1300,"CAD":1.3,"AUD":1.5,"CHF":0.85}}
+         "rates":{"USD":1,"EUR":0.9,"GBP":0.8,"CNY":7,"JPY":150,"KRW":1300,"CAD":1.3,"AUD":1.5,"CHF":0.85,"SEK":10.5}}
         """.utf8)
         let store = CurrencyStore(defaults: defaults)
         let now = Date()
@@ -58,6 +58,9 @@ struct CurrencyStoreTests {
             return (data, response)
         }
         precondition(requests == 3 && store.lastUpdated == now.addingTimeInterval(60))
+        store.currency = .sek
+        precondition(store.displayCurrency == .sek && store.converted(usd: 100) == 1050)
+        precondition(store.displaySymbol == "SEK " && !store.displayUsesWholeUnits)
         store.currency = .usd
         precondition(store.usdRate == 1 && store.displaySymbol == "$")
         print("PASS currency switching, single-flight refresh, expiry, offline retention, validation, persistence, manual refresh")
