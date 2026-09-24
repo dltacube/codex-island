@@ -47,7 +47,8 @@ enum UsageFetcher {
     private static func errorPair(_ message: String) -> AppUsage {
         AppUsage(
             fiveHour: WindowUsage(usedPercent: 0, resetAt: nil, error: message),
-            weekly: WindowUsage(usedPercent: 0, resetAt: nil, error: message)
+            weekly: WindowUsage(usedPercent: 0, resetAt: nil, error: message),
+            monthly: WindowUsage(usedPercent: 0, resetAt: nil, error: message)
         )
     }
 
@@ -84,6 +85,7 @@ enum UsageFetcher {
             switch kind {
             case .fiveHour: if fiveHour == nil { fiveHour = parseCodexWindow(d) }
             case .weekly:   if weekly == nil { weekly = parseCodexWindow(d) }
+            case .monthly: break
             }
         }
         var reported: [UsageWindow] = []
@@ -192,10 +194,21 @@ enum UsageFetcher {
                    let type = err["type"] as? String, type == "rate_limit_error" {
                     return .rateLimited
                 }
+                let fiveHour = parseClaudeWindow(obj["five_hour"])
+                let weekly = parseClaudeWindow(obj["seven_day"])
+                let monthly = plan?.lowercased() == "enterprise"
+                    ? parseClaudeEnterpriseCredits(obj["extra_usage"])
+                    : nil
+                var reported: [UsageWindow] = []
+                if !fiveHour.isUnreported { reported.append(.fiveHour) }
+                if !weekly.isUnreported { reported.append(.weekly) }
+                if monthly != nil { reported.append(.monthly) }
                 return .success(AppUsage(
-                    fiveHour: parseClaudeWindow(obj["five_hour"]),
-                    weekly: parseClaudeWindow(obj["seven_day"]),
-                    plan: plan
+                    fiveHour: fiveHour,
+                    weekly: weekly,
+                    monthly: monthly ?? .unknown,
+                    plan: plan,
+                    reportedWindows: reported
                 ))
             }
             return .otherError("parse error")
@@ -222,5 +235,33 @@ enum UsageFetcher {
             resetAt = f.date(from: s) ?? ISO8601DateFormatter().date(from: s)
         }
         return WindowUsage(usedPercent: min(1, max(0, normalized)), resetAt: resetAt, error: nil)
+    }
+
+    private static func parseClaudeEnterpriseCredits(_ obj: Any?) -> WindowUsage? {
+        guard let details = obj as? [String: Any],
+              details["is_enabled"] as? Bool == true,
+              let usedCents = details["used_credits"] as? Double,
+              usedCents >= 0 else { return nil }
+
+        // Claude CLI treats these API values as cents (for example, 1600 is
+        // displayed as $16.00). Keep raw cents for utilization, then store
+        // major currency units for the app's currency formatter.
+        let limitCents = details["monthly_limit"] as? Double
+        guard limitCents.map({ $0 >= 0 }) ?? true else { return nil }
+        let reportedUtilization = (details["utilization"] as? Double).map { $0 / 100 }
+        let utilization = reportedUtilization
+            ?? limitCents.flatMap { $0 > 0 ? usedCents / $0 : 1 }
+            ?? 0
+        guard utilization.isFinite else { return nil }
+        let now = Date()
+        let resetAt = Calendar.current.dateInterval(of: .month, for: now)?.end
+        return WindowUsage(
+            usedPercent: min(1, max(0, utilization)),
+            resetAt: resetAt,
+            error: nil,
+            usedAmount: usedCents / 100,
+            limitAmount: limitCents.map { $0 / 100 },
+            currencyCode: details["currency"] as? String ?? "USD"
+        )
     }
 }
