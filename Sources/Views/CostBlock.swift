@@ -400,9 +400,8 @@ struct CostTile: View {
 
     /// Compact "↻ 5h" / "↻ 12d" countdown — computed at render time from
     /// the current clock so the panel always shows accurate time-remaining
-    /// regardless of how stale the last refresh is. Mirrors `NumericChart`'s
-    /// "↻ 3h" treatment so the cost screen doesn't introduce a new caption
-    /// shape. When the embedded pricing snapshot is missing models that
+    /// regardless of how stale the last refresh is. Uses the same "↻ 3h"
+    /// caption shape as the usage tiles. When the embedded pricing snapshot is missing models that
     /// produced real spend in this window, the countdown is replaced with
     /// an "⚠ N unpriced" warning so the user knows the dollar total is an
     /// undercount rather than a clean zero.

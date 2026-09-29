@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Five-tile picker for the default chart style. Replaces the
+/// Four-tile picker for the default chart style. Replaces the
 /// undocumented ⌘-click cycle gesture (which still works in the panel).
 /// Each tile renders a tiny preview using the brand terracotta — not
 /// pixel-identical to the live chart, but the same vocabulary so the
@@ -57,15 +57,6 @@ struct ChartStylePicker: View {
                 }
             }
             .frame(width: 28, height: 14)
-        case .numeric:
-            HStack(alignment: .firstTextBaseline, spacing: 1) {
-                Text("35")
-                    .font(Typography.previewNumber)
-                    .foregroundStyle(claude)
-                Text("%")
-                    .font(Typography.micro)
-                    .foregroundStyle(.white.opacity(0.5))
-            }
         case .spark:
             SparkPath()
                 .stroke(claude, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
