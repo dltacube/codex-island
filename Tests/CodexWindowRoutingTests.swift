@@ -66,6 +66,34 @@ struct CodexWindowRoutingTests {
     """
 
     static func main() {
+        let auth = Data(#"{"tokens":{"access_token":"test-token","account_id":"selected-account"}}"#.utf8)
+        for path in ["usage", "rate-limit-reset-credits"] {
+            let request = UsageFetcher.codexRequest(path: path, authData: auth)
+            expect(request?.url?.absoluteString == "https://chatgpt.com/backend-api/wham/\(path)",
+                   "\(path) uses the intended endpoint")
+            expect(request?.value(forHTTPHeaderField: "Authorization") == "Bearer test-token",
+                   "\(path) authenticates with the existing access token")
+            expect(request?.value(forHTTPHeaderField: "ChatGPT-Account-Id") == "selected-account",
+                   "\(path) selects the signed-in account instead of the backend default")
+        }
+        let switchedAuth = Data(#"{"tokens":{"access_token":"new-token","account_id":"other-account"}}"#.utf8)
+        let switched = UsageFetcher.codexRequest(path: "usage", authData: switchedAuth)
+        expect(switched?.value(forHTTPHeaderField: "ChatGPT-Account-Id") == "other-account",
+               "changed credentials select the new account")
+        expect(switched?.value(forHTTPHeaderField: "Authorization") == "Bearer new-token",
+               "token and account come from the same credential snapshot")
+        for fixture in [#"{"tokens":{"access_token":"test-token"}}"#,
+                        #"{"tokens":{"access_token":"test-token","account_id":" "}}"#] {
+            let request = UsageFetcher.codexRequest(path: "usage", authData: Data(fixture.utf8))
+            expect(request != nil && request?.value(forHTTPHeaderField: "ChatGPT-Account-Id") == nil,
+                   "legacy credentials without an account retain token-only compatibility")
+        }
+        for fixture in ["not-json", "{}", #"{"tokens":{"account_id":"selected-account"}}"#,
+                        #"{"tokens":{"access_token":" "}}"#] {
+            expect(UsageFetcher.codexRequest(path: "usage", authData: Data(fixture.utf8)) == nil,
+                   "unusable credentials cannot create an authenticated request")
+        }
+
         // MARK: the live 2026-08 shape — weekly lives in the primary slot
 
         let weeklyOnly = UsageFetcher.routeCodexWindows(rateLimit(fromResponse: weeklyOnlyResponse))

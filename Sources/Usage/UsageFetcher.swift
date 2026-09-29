@@ -7,12 +7,9 @@ enum UsageFetcher {
     /// the access_token from ~/.codex/auth.json. The endpoint is reliable
     /// and rarely rate-limited, so this is the easy half of the integration.
     static func fetchCodex() async -> AppUsage {
-        guard let token = readCodexAccessToken() else {
+        guard let req = codexRequest(path: "usage") else {
             return errorPair("no codex auth")
         }
-
-        var req = URLRequest(url: URL(string: "https://chatgpt.com/backend-api/wham/usage")!)
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
         do {
             let (data, response) = try await URLSession.shared.data(for: req)
@@ -51,13 +48,29 @@ enum UsageFetcher {
         )
     }
 
-    private static func readCodexAccessToken() -> String? {
-        let path = NSString("~/.codex/auth.json").expandingTildeInPath
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+    private static func codexRequest(path: String) -> URLRequest? {
+        let authPath = NSString("~/.codex/auth.json").expandingTildeInPath
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: authPath)) else { return nil }
+        return codexRequest(path: path, authData: data)
+    }
+
+    static func codexRequest(path: String, authData: Data) -> URLRequest? {
+        guard let json = try? JSONSerialization.jsonObject(with: authData) as? [String: Any],
               let tokens = json["tokens"] as? [String: Any],
-              let token = tokens["access_token"] as? String else { return nil }
-        return token
+              let token = tokens["access_token"] as? String,
+              !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let url = URL(string: "https://chatgpt.com/backend-api/wham/\(path)")
+        else { return nil }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        // A token can cover multiple accounts; omitting the selected account
+        // lets the backend return another account's quota and reset credits.
+        if let accountID = tokens["account_id"] as? String,
+           !accountID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            request.setValue(accountID, forHTTPHeaderField: "ChatGPT-Account-Id")
+        }
+        return request
     }
 
     /// The window slots stopped being positional in mid-2026: plans with a
@@ -100,11 +113,7 @@ enum UsageFetcher {
     }
 
     static func fetchCodexResetCredits() async -> CodexResetCredits? {
-        guard let token = readCodexAccessToken() else { return nil }
-
-        var req = URLRequest(url: URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits")!)
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        guard let req = codexRequest(path: "rate-limit-reset-credits") else { return nil }
 
         do {
             let (data, response) = try await URLSession.shared.data(for: req)
