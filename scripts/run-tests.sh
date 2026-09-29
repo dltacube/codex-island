@@ -208,3 +208,4 @@ swiftc \
 bash scripts/test-weekly-card.sh
 bash scripts/test-usage-ledger.sh
 bash scripts/test-claude-recovery.sh
+bash scripts/test-sparkline.sh
