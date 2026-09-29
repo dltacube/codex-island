@@ -6,13 +6,16 @@ enum UsageFetcher {
     /// Codex usage lives at chatgpt.com/backend-api/wham/usage and accepts
     /// the access_token from ~/.codex/auth.json. The endpoint is reliable
     /// and rarely rate-limited, so this is the easy half of the integration.
-    static func fetchCodex() async -> AppUsage {
-        guard let req = codexRequest(path: "usage") else {
+    static func fetchCodex(
+        credentialData: Data? = nil,
+        send: (URLRequest) async throws -> (Data, URLResponse) = { try await URLSession.shared.data(for: $0) }
+    ) async -> AppUsage {
+        guard let req = codexRequest(path: "usage", credentialData: credentialData) else {
             return errorPair("no codex auth")
         }
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: req)
+            let (data, response) = try await send(req)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
 
             // 401 means the access_token in ~/.codex/auth.json has expired.
@@ -48,9 +51,9 @@ enum UsageFetcher {
         )
     }
 
-    private static func codexRequest(path: String) -> URLRequest? {
+    private static func codexRequest(path: String, credentialData: Data?) -> URLRequest? {
         let authPath = NSString("~/.codex/auth.json").expandingTildeInPath
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: authPath)) else { return nil }
+        guard let data = credentialData ?? (try? Data(contentsOf: URL(fileURLWithPath: authPath))) else { return nil }
         return codexRequest(path: path, authData: data)
     }
 
@@ -112,11 +115,14 @@ enum UsageFetcher {
         return WindowUsage(usedPercent: used / 100, resetAt: resetAt, error: nil)
     }
 
-    static func fetchCodexResetCredits() async -> CodexResetCredits? {
-        guard let req = codexRequest(path: "rate-limit-reset-credits") else { return nil }
+    static func fetchCodexResetCredits(
+        credentialData: Data? = nil,
+        send: (URLRequest) async throws -> (Data, URLResponse) = { try await URLSession.shared.data(for: $0) }
+    ) async -> CodexResetCredits? {
+        guard let req = codexRequest(path: "rate-limit-reset-credits", credentialData: credentialData) else { return nil }
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: req)
+            let (data, response) = try await send(req)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard status == 200,
                   let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
