@@ -365,3 +365,5 @@
 "Saved token counts exceed the supported range. Check the recovery files before trying again." = "保存的 token 数量超出了支持范围。请检查恢复文件后重试。";
 "History appears after more refreshes." = "更多刷新后将显示历史记录。";
 "Recorded usage" = "已记录的用量";
+
+"Sample usage" = "示例用量";

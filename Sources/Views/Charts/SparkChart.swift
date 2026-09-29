@@ -9,14 +9,16 @@ struct SparkChart: View {
     var history: [Double] = []
 
     var body: some View {
+        let samples = SparklineSamples.displayed(history: history, value: value, seed: seed,
+                                                isDemo: AppEnvironment.isDemo)
         VStack(alignment: .leading, spacing: 6) {
             ChartHead(value: value, label: label)
             Group {
-                if history.count >= 2 {
+                if samples.count >= 2 {
                     GeometryReader { geo in
-                        let points = history.enumerated().map { index, sample in
+                        let points = samples.enumerated().map { index, sample in
                             CGPoint(
-                                x: 3 + CGFloat(index) / CGFloat(history.count - 1) * max(0, geo.size.width - 6),
+                                x: 3 + CGFloat(index) / CGFloat(samples.count - 1) * max(0, geo.size.width - 6),
                                 y: 3 + (1 - CGFloat(min(100, max(0, sample)) / 100)) * max(0, geo.size.height - 6)
                             )
                         }
@@ -39,7 +41,7 @@ struct SparkChart: View {
                             }
                         }
                     }
-                    .accessibilityLabel(L10n.tr("Recorded usage"))
+                    .accessibilityLabel(L10n.tr(AppEnvironment.isDemo ? "Sample usage" : "Recorded usage"))
                 } else {
                     Text(L10n.tr("History appears after more refreshes."))
                         .font(Typography.micro)
