@@ -86,6 +86,15 @@ final class IslandWindowController {
     private func installMouseTracking() {
         window.ignoresMouseEvents = true
 
+        // Provider changes and collapse can free space beneath a stationary
+        // cursor; do not wait for another mouse move to pass clicks through.
+        model.$layout
+            .dropFirst()
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.updateMouseEventsBasedOnCursor() }
+            }
+            .store(in: &subs)
+
         let handler: (NSEvent) -> Void = { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
@@ -120,13 +129,7 @@ final class IslandWindowController {
         let win = window.frame
         let local = NSPoint(x: cursor.x - win.minX, y: cursor.y - win.minY)
 
-        let size = model.size
-        let rect = NSRect(
-            x: win.width / 2 - size.width / 2,
-            y: win.height - size.height,
-            width: size.width,
-            height: size.height
-        )
+        let rect = model.layout.rect(in: CGRect(origin: .zero, size: win.size))
         let inside = rect.contains(local)
         if window.ignoresMouseEvents == inside {
             window.ignoresMouseEvents = !inside

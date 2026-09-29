@@ -31,14 +31,7 @@ final class IslandHostingView: NSHostingView<IslandRootView> {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        let b = bounds
-        let size = islandModel.size
-        let rect = NSRect(
-            x: b.midX - size.width / 2,
-            y: b.maxY - size.height,
-            width: size.width,
-            height: size.height
-        )
+        let rect = islandModel.layout.rect(in: bounds)
         return rect.contains(point) ? super.hitTest(point) : nil
     }
 

@@ -19,9 +19,11 @@ final class IslandModel: ObservableObject {
     }
 
     @Published var state: State = .compact
-    @Published var size: CGSize = .zero
+    @Published private(set) var layout = IslandLayout(size: .zero)
     @Published var notch: NotchInfo
     @Published var edgeBump: EdgeBump?
+
+    var size: CGSize { layout.size }
 
     /// Side extension that houses each brand logo in compact state.
     let tabWidth: CGFloat = 38
@@ -30,9 +32,7 @@ final class IslandModel: ObservableObject {
     /// Sized for "100% · Nd Nh" worst case at the chosen pill typography
     /// (weekly Codex windows can land at e.g. `6d 23h`). Fixed (not
     /// text-measured) so percentage updates don't jitter the silhouette
-    /// width during refresh. Grown symmetrically on both sides regardless
-    /// of which provider is visible — keeps the silhouette balanced over
-    /// the physical notch.
+    /// width during refresh. Only selected providers get a side extension.
     let pillSlotWidth: CGFloat = 96
 
     /// Visible expanded panel width.
@@ -46,14 +46,20 @@ final class IslandModel: ObservableObject {
     /// `updateNotch`'s diff guard isn't confused by override-induced
     /// width changes that originate from the store, not the screen.
     private var rawNotch: NotchInfo
+    private let visibility: ProviderVisibilityStore
+    private var hasRightProvider: Bool
 
     private var subs: Set<AnyCancellable> = []
 
-    init(notch: NotchInfo) {
+    init(notch: NotchInfo, visibility: ProviderVisibilityStore? = nil) {
+        let visibility = visibility ?? .shared
+        self.visibility = visibility
+        self.hasRightProvider = visibility.right != nil
         self.rawNotch = notch
         self.notch = Self.applyOverride(to: notch, width: IslandSpacingStore.shared.width)
         recomputeSize()
         subscribeToSpacingStore()
+        subscribeToProviderVisibility()
     }
 
     func setState(_ new: State) {
@@ -138,23 +144,37 @@ final class IslandModel: ObservableObject {
             .store(in: &subs)
     }
 
+    private func subscribeToProviderVisibility() {
+        visibility.$selected
+            .map { $0.count > 1 }
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] hasRightProvider in
+                guard let self else { return }
+                self.hasRightProvider = hasRightProvider
+                withAnimation(.openMorph) {
+                    self.recomputeSize()
+                }
+            }
+            .store(in: &subs)
+    }
+
     private func recomputeSize() {
         switch state {
-        case .compact:
-            size = CGSize(
-                width: notch.width + tabWidth * 2,
-                height: notch.height
-            )
-        case .peek:
-            size = CGSize(
-                width: notch.width + tabWidth * 2 + pillSlotWidth * 2,
-                height: notch.height
+        case .compact, .peek:
+            let leftWidth = tabWidth + (state == .peek ? pillSlotWidth : 0)
+            let rightWidth = hasRightProvider ? leftWidth : 0
+            // Keep the remaining provider beside the physical notch. On
+            // non-notched displays the smaller pill stays screen-centered.
+            layout = IslandLayout(
+                size: CGSize(width: notch.width + leftWidth + rightWidth, height: notch.height),
+                horizontalOffset: notch.hasNotch ? (rightWidth - leftWidth) / 2 : 0
             )
         case .expanded:
-            size = CGSize(
+            layout = IslandLayout(size: CGSize(
                 width: expandedWidth,
                 height: max(notch.height, expandedHeight)
-            )
+            ))
         }
     }
 }

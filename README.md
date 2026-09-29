@@ -204,6 +204,10 @@ the first peek. Opening Settings also triggers a fresh fetch.
 Provider visibility is display-only. Hiding a provider removes that provider's
 logo and column from the island, but the app keeps the latest usage values in
 memory so showing it again does not require a reset.
+With one provider selected, the compact and peek states also remove the unused
+right extension and let clicks pass through that space. The remaining provider
+stays beside the physical notch; on non-notched displays the smaller island
+stays centered. The expanded panel remains centered in either case.
 
 ## Settings
 

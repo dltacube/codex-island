@@ -205,6 +205,7 @@ struct IslandRootView: View {
                         }
                     }
                 }
+                .offset(x: model.layout.horizontalOffset)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

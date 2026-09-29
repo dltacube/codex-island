@@ -39,6 +39,25 @@ swiftc \
 
 swiftc \
   -parse-as-library \
+  -o "$OUT_DIR/island-layout-tests" \
+  Sources/Model/IslandLayout.swift \
+  Sources/Model/IslandModel.swift \
+  Sources/Model/IslandProvider.swift \
+  Sources/Model/ProviderVisibilityStore.swift \
+  Sources/Model/NotchInfo.swift \
+  Sources/Model/IslandSpacingStore.swift \
+  Sources/Model/PreferenceStorage.swift \
+  Sources/Model/ScreenPref.swift \
+  Sources/Model/AppEnvironment.swift \
+  Sources/Model/AppLanguageStore.swift \
+  Sources/Localization/L10n.swift \
+  Sources/Theme/Animations.swift \
+  Tests/IslandLayoutTests.swift
+
+"$OUT_DIR/island-layout-tests"
+
+swiftc \
+  -parse-as-library \
   -o "$OUT_DIR/usage-merge-tests" \
   Sources/Model/UsageDisplayModeStore.swift \
   Sources/Usage/AppUsage.swift \
