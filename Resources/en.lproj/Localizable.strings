@@ -363,3 +363,5 @@
 "The usage archive changed. Scan again before saving." = "The usage archive changed. Scan again before saving.";
 "A selected recovery source is no longer available. Choose it again, then scan." = "A selected recovery source is no longer available. Choose it again, then scan.";
 "Saved token counts exceed the supported range. Check the recovery files before trying again." = "Saved token counts exceed the supported range. Check the recovery files before trying again.";
+"History appears after more refreshes." = "History appears after more refreshes.";
+"Recorded usage" = "Recorded usage";
