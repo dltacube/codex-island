@@ -10,6 +10,8 @@ cd "$(dirname "$0")/.."
 OUT_DIR=$(mktemp -d)
 trap 'rm -rf "$OUT_DIR"' EXIT
 
+python3 Tests/SetupSparkleTests.py
+
 swiftc -parse-as-library -o "$OUT_DIR/currency-tests" \
   Sources/Model/CurrencyStore.swift \
   Sources/Model/AppLanguageStore.swift \
@@ -26,6 +28,22 @@ swiftc \
   Tests/ResolveUsageTests.swift
 
 CLAUDE_CODE_OAUTH_TOKEN="test-stub-token" "$OUT_DIR/resolve-usage-tests"
+
+swiftc \
+  -parse-as-library \
+  -o "$OUT_DIR/claude-usage-cooldown-tests" \
+  Sources/Usage/ClaudeUsageCooldown.swift \
+  Tests/ClaudeUsageCooldownTests.swift
+
+"$OUT_DIR/claude-usage-cooldown-tests"
+
+swiftc \
+  -parse-as-library \
+  -o "$OUT_DIR/claude-usage-scheduling-tests" \
+  Sources/Usage/ClaudeUsageScheduling.swift \
+  Tests/ClaudeUsageSchedulingTests.swift
+
+"$OUT_DIR/claude-usage-scheduling-tests"
 
 swiftc \
   -parse-as-library \
@@ -197,3 +215,4 @@ swiftc \
 bash scripts/test-weekly-card.sh
 bash scripts/test-usage-ledger.sh
 bash scripts/test-claude-recovery.sh
+bash scripts/test-sparkline.sh

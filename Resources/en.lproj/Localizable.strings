@@ -82,7 +82,6 @@
 "no %@ activity in last 5h or this week" = "no %@ activity in last 5h or this week";
 "No Activity" = "No Activity";
 "Notch-style" = "Notch-style";
-"Numeric" = "Numeric";
 "Open CodexIsland when you sign in." = "Open CodexIsland when you sign in.";
 "Overview" = "Overview";
 "Overview shows %@ usage history" = "Overview shows %@ usage history";
@@ -291,6 +290,11 @@
 
 "Weekly card" = "Weekly card";
 "About this card" = "About this card";
+"Currency" = "Currency";
+"Card currency" = "Card currency";
+"Exchange rate unavailable." = "Exchange rate unavailable.";
+"Refresh the rate or choose USD." = "Refresh the rate or choose USD.";
+"API value estimates your usage at API rates in USD, not your subscription bill. Other currencies use a reference exchange rate. Tokens include cache reads and writes." = "API value estimates your usage at API rates in USD, not your subscription bill. Other currencies use a reference exchange rate. Tokens include cache reads and writes.";
 "API value estimates your usage at API rates in USD, not your subscription bill. Tokens include cache reads and writes." = "API value estimates your usage at API rates in USD, not your subscription bill. Tokens include cache reads and writes.";
 "The card includes daily usage, provider totals, active days, and your signature. It does not include prompts or conversations." = "The card includes daily usage, provider totals, active days, and your signature. It does not include prompts or conversations.";
 "Fit" = "Fit";
@@ -367,3 +371,7 @@
 "The usage archive changed. Scan again before saving." = "The usage archive changed. Scan again before saving.";
 "A selected recovery source is no longer available. Choose it again, then scan." = "A selected recovery source is no longer available. Choose it again, then scan.";
 "Saved token counts exceed the supported range. Check the recovery files before trying again." = "Saved token counts exceed the supported range. Check the recovery files before trying again.";
+"History appears after more refreshes." = "History appears after more refreshes.";
+"Recorded usage" = "Recorded usage";
+
+"Sample usage" = "Sample usage";
