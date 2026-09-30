@@ -385,3 +385,19 @@
 "Recorded usage" = "已记录的用量";
 
 "Sample usage" = "示例用量";
+
+"Rails" = "刻度条";
+
+"Grid" = "网格";
+
+"History" = "历史";
+
+"Inner ring" = "内环";
+
+"Outer ring" = "外环";
+
+"Recorded observations in order, not elapsed time." = "按记录顺序排列，不代表实际时间间隔。";
+
+"No recorded reading" = "暂无使用记录";
+
+"Unlimited" = "不限额";

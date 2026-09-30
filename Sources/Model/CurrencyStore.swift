@@ -185,24 +185,10 @@ final class CurrencyStore: ObservableObject {
         currency == .usd || cache?.rates[currency.rawValue] != nil
     }
 
-    func formatted(usd: Double, compact: Bool = true, includesSymbol: Bool = true, locale: Locale = L10n.locale) -> String {
-        let value = converted(usd: usd)
-        let digits: Int
-        if displayUsesWholeUnits || value >= 100 {
-            digits = 0
-        } else if compact, value >= 10 {
-            digits = 1
-        } else {
-            digits = 2
-        }
-
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.locale = locale
-        formatter.minimumFractionDigits = digits
-        formatter.maximumFractionDigits = digits
-        formatter.usesGroupingSeparator = true
-        let number = formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+    func formatted(usd: Double, compact: Bool = true, includesSymbol: Bool = true,
+                   abbreviated: Bool = false, locale: Locale = L10n.locale) -> String {
+        let number = DisplayNumber.money(converted(usd: usd), wholeUnits: displayUsesWholeUnits,
+            compact: compact, abbreviated: abbreviated, locale: locale)
         let affixes = displayCurrency.affixes(locale: locale)
         return includesSymbol ? affixes.prefix + number + affixes.suffix : number
     }

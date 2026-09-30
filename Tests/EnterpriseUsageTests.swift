@@ -15,6 +15,10 @@ struct EnterpriseUsageTests {
     }
 
     @MainActor static func main() {
+        expect(UsageWindow.monthly.labelKey == "Credits", "monthly credits cannot use the weekly label")
+        let staleCaption = UsageChartsRow(color: .white, style: .ring, seed: 0, metrics: [])
+            .caption(WindowUsage(usedPercent: 0.4, resetAt: nil, error: "HTTP 500", usedAmount: 6.4, limitAmount: 16))
+        expect(staleCaption.hasPrefix("HTTP 500"), "monthly fetch error stays visible in narrow captions")
         let limited = parse(#"{"is_enabled":true,"used_credits":47,"monthly_limit":1600,"currency":"USD"}"#)!
         expect(limited.usedAmount == 0.47 && limited.limitAmount == 16, "API cents convert once to major units")
         expect(abs(limited.usedPercent - 47.0 / 1600) < 0.000001, "utilization uses raw cents")

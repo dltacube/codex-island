@@ -43,3 +43,13 @@ extension WindowUsage {
         return L10n.tr("%@ credits used · unlimited", used)
     }
 }
+
+extension UsageWindow {
+    var labelKey: String {
+        switch self {
+        case .fiveHour: return "5h"
+        case .weekly: return "week"
+        case .monthly: return "Credits"
+        }
+    }
+}

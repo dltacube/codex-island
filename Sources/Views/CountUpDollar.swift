@@ -79,7 +79,6 @@ struct CountUpDollar: View {
         Text(text)
             .font(font)
             .lineLimit(1)
-            .minimumScaleFactor(0.5)
             .foregroundStyle(color)
             .shadow(color: color.opacity(glowOpacity), radius: 6)
             .shadow(color: color.opacity(glowOpacity * 0.5), radius: 14)
@@ -108,11 +107,7 @@ struct CountUpDollar: View {
         return startValue + (target - startValue) * eased
     }
 
-    /// Cents under $100 (where they're meaningful); rounded above so a
-    /// 7-digit month total fits the 38pt slot.
     private func formatted(_ v: Double) -> String {
-        let digits = wholeUnits || v >= 100 ? 0 : v >= 10 ? 1 : 2
-        return v.formatted(.number.locale(L10n.locale)
-            .grouping(.automatic).precision(.fractionLength(digits)))
+        DisplayNumber.money(v, wholeUnits: wholeUnits, abbreviated: true, locale: L10n.locale)
     }
 }

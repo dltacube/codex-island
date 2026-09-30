@@ -12,7 +12,12 @@ trap 'rm -rf "$OUT_DIR"' EXIT
 
 python3 Tests/SetupSparkleTests.py
 
+swiftc -parse-as-library -o "$OUT_DIR/display-number-tests" \
+  Sources/Theme/DisplayNumber.swift Tests/DisplayNumberTests.swift
+"$OUT_DIR/display-number-tests"
+
 swiftc -parse-as-library -o "$OUT_DIR/currency-tests" \
+  Sources/Theme/DisplayNumber.swift \
   Sources/Model/CurrencyStore.swift \
   Sources/Model/AppLanguageStore.swift \
   Sources/Localization/L10n.swift \
@@ -216,5 +221,6 @@ bash scripts/test-weekly-card.sh
 bash scripts/test-usage-ledger.sh
 bash scripts/test-claude-recovery.sh
 bash scripts/test-sparkline.sh
+bash scripts/test-charts.sh
 
 bash scripts/test-enterprise.sh

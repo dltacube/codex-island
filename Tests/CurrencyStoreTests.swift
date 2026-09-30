@@ -97,6 +97,14 @@ struct CurrencyStoreTests {
         precondition(store.quote(for: .krw, locale: english)?.formatted(usd: 100) == "₩130,000")
         precondition(store.quote(for: .eur, locale: english)?.formatted(usd: 0.001) == "<€0.01")
         precondition(store.quote(for: .krw, locale: english)?.formatted(usd: 0.0001) == "<₩1")
+        store.currency = .sek
+        let compactKrona = store.formatted(usd: 100, abbreviated: true, locale: Locale(identifier: "sv_SE"))
+        precondition(compactKrona.hasSuffix(" kr") && !compactKrona.hasPrefix("kr"))
+        store.currency = .eur
+        let compactEuro = store.formatted(usd: 2_000_000, abbreviated: true, locale: Locale(identifier: "de_DE"))
+        precondition(compactEuro == "€1,8M")
+        store.currency = .usd
+        precondition(store.formatted(usd: 9.5, compact: false, locale: english) == "$9.50")
         store.currency = .krw
         precondition(store.converted(usd: 100) == 130000)
         precondition(store.displayUsesWholeUnits)
