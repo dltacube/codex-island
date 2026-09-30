@@ -222,3 +222,5 @@ bash scripts/test-usage-ledger.sh
 bash scripts/test-claude-recovery.sh
 bash scripts/test-sparkline.sh
 bash scripts/test-charts.sh
+
+bash scripts/test-enterprise.sh

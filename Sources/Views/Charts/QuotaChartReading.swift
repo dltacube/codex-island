@@ -6,6 +6,7 @@ struct QuotaChartReading: Identifiable {
     let label: String
     let value: Double?
     let caption: String
+    var amount: String? = nil
     var history: [Double] = []
 }
 
@@ -31,7 +32,7 @@ struct QuotaValue: View {
                         .foregroundStyle(UrgencyColor.value(value, mode: mode))
                         .numericTransition(value: Double(DisplayNumber.percent(value)))
                 } else {
-                    Text(verbatim: "-").font(font).foregroundStyle(.white.opacity(0.55))
+                    Text(verbatim: reading.amount == nil ? "-" : "∞").font(font).foregroundStyle(.white.opacity(0.55))
                 }
                 Text("%")
                     .font(Typography.micro)
@@ -63,10 +64,12 @@ struct QuotaAccessibility: ViewModifier {
     func body(content: Content) -> some View {
         content
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(reading.value.map {
+            .accessibilityLabel(reading.amount.map {
+                L10n.tr("%@, %@ spent, unlimited", reading.label, $0)
+            } ?? reading.value.map {
                 L10n.tr("%@, %d%%", reading.label, DisplayNumber.percent($0))
             } ?? L10n.tr("%@, no reading", reading.label))
-            .accessibilityValue(L10n.tr(mode == .used ? "Used" : "Remaining") + ", " + reading.caption)
+            .accessibilityValue(reading.amount == nil ? L10n.tr(mode == .used ? "Used" : "Remaining") + ", " + reading.caption : reading.caption)
     }
 }
 

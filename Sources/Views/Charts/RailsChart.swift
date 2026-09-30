@@ -26,6 +26,7 @@ struct RailsChart: View {
                         }
                     }
                     .frame(height: 4)
+                    .opacity(reading.amount == nil ? 1 : 0)
                     .accessibilityHidden(true)
                     HStack { Spacer(minLength: 0); QuotaCaption(caption: reading.caption) }
                 }

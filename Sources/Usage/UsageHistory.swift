@@ -45,6 +45,7 @@ final class UsageHistoryStore: ObservableObject {
     func record(provider: AlertEngine.Provider, usage: AppUsage, at: Date) {
         var changed = append(provider, .fiveHour, usage.fiveHour, at)
         changed = append(provider, .weekly, usage.weekly, at) || changed
+        changed = append(provider, .monthly, usage.monthly, at) || changed
         if changed {
             persist()
             revision &+= 1
@@ -89,7 +90,7 @@ final class UsageHistoryStore: ObservableObject {
     }
 
     private func append(_ k: String, _ reading: WindowUsage, _ at: Date) -> Bool {
-        guard reading.error == nil else { return false }
+        guard reading.error == nil, reading.hasPercentageReading else { return false }
         var arr = series[k] ?? []
         arr.append(UsageSample(at: at, used: max(0, min(1, reading.usedPercent))))
         let cutoff = at.addingTimeInterval(-Self.maxAge)

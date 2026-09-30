@@ -10,6 +10,12 @@ struct UsageView: View {
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
 
     private var style: ChartStyle { pref.style }
+    private var rowHeight: CGFloat {
+        let providers = [visibility.left, visibility.right].compactMap { $0 }
+        return providers.contains { provider in
+            provider.usesLegacyUsage && (provider == .claude ? store.claude : store.codex).visibleWindows.count > 2
+        } ? 180 : IslandPanelLayout.tileHeight
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -25,7 +31,7 @@ struct UsageView: View {
                 Color.clear.frame(maxWidth: .infinity)
             }
         }
-        .frame(height: IslandPanelLayout.tileHeight)
+        .frame(height: rowHeight)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .padding(.horizontal, IslandPanelLayout.horizontalInset)
     }
@@ -188,13 +194,13 @@ struct UsageChartsRow: View {
         metrics.enumerated().map { index, metric in
             let window = metric.window
             let mode = usageDisplay.mode
-            let value = window.hasReading ? Double(DisplayNumber.percent(window.displayedFraction(mode: mode) * 100)) : nil
+            let value = window.hasPercentageReading ? Double(DisplayNumber.percent(window.displayedFraction(mode: mode) * 100)) : nil
             let history = style == .telemetry ? historyStore.samples(key: metric.historyKey).map {
                 Double(DisplayNumber.percent(WindowUsage(usedPercent: $0.used, resetAt: nil, error: nil)
                     .displayedFraction(mode: mode) * 100))
             } : []
             return QuotaChartReading(id: metric.id, label: L10n.tr(metric.label), value: value,
-                caption: caption(window), history: value.map {
+                caption: caption(window), amount: window.isUnlimitedAmount ? window.usedAmount.map { UsageCreditDisplay.currency($0, code: window.currencyCode) } : nil, history: value.map {
                     SparklineSamples.displayed(history: history, value: $0, seed: seed + index,
                                                isDemo: AppEnvironment.isDemo)
                 } ?? [])
@@ -224,6 +230,8 @@ struct UsageChartsRow: View {
                         Group {
                             if let value = reading.value {
                                 SteppedChart(value: value, color: color, label: reading.label, sub: reading.caption)
+                            } else if let amount = reading.amount {
+                                UsageAmountChart(label: reading.label, amount: amount, sub: reading.caption)
                             } else {
                                 NoReadingChart(label: reading.label, sub: reading.caption)
                             }
@@ -236,17 +244,43 @@ struct UsageChartsRow: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: IslandPanelLayout.tileHeight)
+        .frame(height: metrics.count > 2 ? 180 : IslandPanelLayout.tileHeight)
         .id(style)
         .transition(reduceMotion ? .opacity : .chartSwap)
         .animation(reduceMotion ? nil : .chartSwap, value: style)
     }
 
     private func caption(_ window: WindowUsage) -> String {
+        if let amounts = window.amountCaption {
+            if let error = window.error, error != "no data" { return amounts + " · " + error }
+            guard let resetAt = window.resetAt else { return amounts }
+            return amounts + " · " + L10n.tr("resets in %@", Duration.compact(max(0, resetAt.timeIntervalSinceNow)))
+        }
         if let reset = window.resetAt {
             return L10n.tr("resets in %@", Duration.compact(max(0, reset.timeIntervalSinceNow)))
         }
         if let error = window.error, error != "no data" { return error }
         return ""
+    }
+}
+
+private struct UsageAmountChart: View {
+    let label: String
+    let amount: String
+    let sub: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label)
+                .font(Typography.label)
+                .foregroundStyle(.white.opacity(0.6))
+            Text(amount)
+                .font(Typography.bigNumber)
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            ChartFoot(caption: sub)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 }

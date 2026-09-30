@@ -32,6 +32,7 @@ struct CapacityChart: View {
                     }
                 }
                 .frame(height: 64)
+                .opacity(reading.amount == nil ? 1 : 0)
                 .frame(maxWidth: .infinity)
                 .accessibilityHidden(true)
             }

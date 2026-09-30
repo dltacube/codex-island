@@ -45,7 +45,7 @@ struct TelemetryChart: View {
             }
             .accessibilityHidden(true)
         } else {
-            Text(reading.value == nil ? L10n.tr("No recorded reading") : L10n.tr("History appears after more refreshes."))
+            Text(reading.amount != nil ? L10n.tr("Unlimited") : reading.value == nil ? L10n.tr("No recorded reading") : L10n.tr("History appears after more refreshes."))
                 .font(Typography.micro).foregroundStyle(.white.opacity(0.6))
                 .lineLimit(1).minimumScaleFactor(0.85)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)

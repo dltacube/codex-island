@@ -110,7 +110,7 @@ struct NotchPeekPill: View {
                 }
             }
             .frame(height: 12)
-            Text(usage.hasReading ? (resetText ?? (windowLengthFallback.isEmpty ? "-" : windowLengthFallback)) : "-")
+            Text(usage.isUnlimitedAmount ? "∞" : usage.hasReading ? (resetText ?? (windowLengthFallback.isEmpty ? "-" : windowLengthFallback)) : "-")
                 .font(Typography.caption)
                 .foregroundStyle(.white.opacity(!usage.hasReading ? 0.40 : (resetText == nil ? 0.45 : 0.70)))
                 .frame(height: 11)
@@ -188,7 +188,10 @@ struct NotchPeekPill: View {
     }
 
     private var percentText: String {
-        "\(usage.displayedPercentInt(mode: usageDisplay.mode))%"
+        if usage.isUnlimitedAmount, let amount = usage.usedAmount {
+            return UsageCreditDisplay.currency(amount, code: usage.currencyCode)
+        }
+        return "\(usage.displayedPercentInt(mode: usageDisplay.mode))%"
     }
 
     /// Shared compact countdown (`Nm` / `Nh` / `Nd Nh`). Returns nil if
