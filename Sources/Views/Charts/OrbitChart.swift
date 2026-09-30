@@ -48,12 +48,12 @@ struct OrbitChart: View {
                     let index = readings.firstIndex { $0.id == reading.id } ?? 0
                     let ratio: CGFloat = readings.count > 2 ? CGFloat(15 + 12 * index) / 39 : inner(reading) ? 27/39 : 1
                     if reading.amount == nil {
-                    QuotaArc(radiusRatio: ratio)
-                        .stroke(.white.opacity(0.15), style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                    if let value = reading.value {
-                        QuotaArc(fraction: value / 100, radiusRatio: ratio)
-                            .stroke(tint(reading), style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                    }
+                        QuotaArc(radiusRatio: ratio)
+                            .stroke(.white.opacity(0.15), style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                        if let value = reading.value {
+                            QuotaArc(fraction: value / 100, radiusRatio: ratio)
+                                .stroke(tint(reading), style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                        }
                     }
                 }
             }

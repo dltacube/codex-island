@@ -91,7 +91,7 @@ struct ChartsBlock: View {
                     } else {
                         UsageChartsRow(color: color, style: style, seed: seed,
                             metrics: usage.visibleWindows.map { kind in
-                                UsageChartMetric(id: kind.rawValue, label: kind == .fiveHour ? "5h" : "week",
+                                UsageChartMetric(id: kind.rawValue, label: kind.labelKey,
                                                  window: usage.window(kind),
                                                  historyKey: "\(provider.rawValue).\(kind.rawValue)")
                             })
@@ -250,9 +250,9 @@ struct UsageChartsRow: View {
         .animation(reduceMotion ? nil : .chartSwap, value: style)
     }
 
-    private func caption(_ window: WindowUsage) -> String {
+    func caption(_ window: WindowUsage) -> String {
         if let amounts = window.amountCaption {
-            if let error = window.error, error != "no data" { return amounts + " · " + error }
+            if let error = window.error, error != "no data" { return error + " · " + amounts }
             guard let resetAt = window.resetAt else { return amounts }
             return amounts + " · " + L10n.tr("resets in %@", Duration.compact(max(0, resetAt.timeIntervalSinceNow)))
         }
