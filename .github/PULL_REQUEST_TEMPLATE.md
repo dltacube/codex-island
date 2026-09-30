@@ -10,9 +10,11 @@
 - Steps to verify:
 - Not verified:
 
-## Screenshots or recording
+## Screenshots (required for UI changes)
 
-<!-- Add before/after evidence for UI changes. Otherwise remove this section. -->
+**UI changes must include screenshots of the changed UI.** Include before/after screenshots when modifying existing UI. For interaction or animation changes, also attach a short recording or GIF.
+
+<!-- Remove this section only if the PR does not change UI. -->
 
 ## Risks
 
@@ -22,6 +24,7 @@
 
 - [ ] I read `CLAUDE.md` and the applicable `AGENTS.md` guidance.
 - [ ] I included verification results and any remaining limitations.
+- [ ] For UI changes, I attached the required screenshots (otherwise N/A).
 - [ ] I removed credentials and private data from code, logs, and screenshots.
 
 <!-- Codex review is configured separately in Codex settings and follows AGENTS.md. A review does not replace CI or maintainer approval. -->
