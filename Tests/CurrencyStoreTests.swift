@@ -3,6 +3,44 @@ import Foundation
 @main
 struct CurrencyStoreTests {
     @MainActor static func main() async throws {
+        let english = Locale(identifier: "en_US")
+        let cases: [(DisplayCurrency, String, String)] = [
+            (.usd, "en_US", "$1,000.00"), (.krw, "ko_KR", "₩1,000"),
+            (.cny, "zh_CN", "¥1,000.00"), (.jpy, "ja_JP", "¥1,000"),
+            (.gbp, "en_GB", "£1,000.00"), (.aud, "en_AU", "$1,000.00"),
+            (.cad, "en_CA", "$1,000.00"), (.cad, "fr_CA", "1 000,00 $"),
+            (.eur, "en_US", "€1,000.00"), (.eur, "de_DE", "1.000,00 €"),
+            (.chf, "de_CH", "CHF 1’000.00"),
+            (.sek, "sv_SE", "1 000,00 kr"), (.sek, "en_US", "SEK 1,000.00")
+        ]
+        for (currency, identifier, expected) in cases {
+            let quote = CurrencyQuote(currency: currency, usdRate: 1, locale: Locale(identifier: identifier))
+            precondition(quote.formatted(usd: 1_000) == expected, "\(currency) in \(identifier)")
+            let integers = quote.attributed(usd: 1_000).runs.filter { $0.numberPart == .integer }
+            precondition(!integers.isEmpty)
+        }
+        let germanEuro = CurrencyQuote(currency: .eur, usdRate: 1, locale: Locale(identifier: "de_DE"))
+        precondition(germanEuro.formatted(usd: 0.001) == "<0,01 €")
+        precondition(germanEuro.formatted(usd: 999.999) == "999,99 €")
+        precondition(germanEuro.milestoneLabel(amount: 1_000_000) == "1M €")
+        let badges: [(DisplayCurrency, String, String)] = [
+            (.krw, "ko_KR", "₩1M"), (.cny, "zh_CN", "¥1M"), (.jpy, "ja_JP", "¥1M"),
+            (.eur, "de_DE", "1M €"), (.sek, "sv_SE", "1M kr"), (.cad, "fr_CA", "1M $")
+        ]
+        for (currency, identifier, expected) in badges {
+            let quote = CurrencyQuote(currency: currency, usdRate: 1, locale: Locale(identifier: identifier))
+            precondition(quote.milestoneLabel(amount: 1_000_000) == expected,
+                         "Club abbreviations stay K/M/B in \(identifier)")
+        }
+        let wonBadge = CurrencyQuote(currency: .krw, usdRate: 1, locale: Locale(identifier: "ko_KR"))
+        for (amount, label) in [(100.0, "₩100"), (1_000, "₩1K"), (10_000, "₩10K"),
+                               (100_000, "₩100K"), (1_000_000, "₩1M"), (10_000_000, "₩10M"),
+                               (100_000_000, "₩100M"), (1_000_000_000, "₩1B")] {
+            precondition(wonBadge.milestoneLabel(amount: amount) == label)
+        }
+        let canadianBadge = CurrencyQuote(currency: .cad, usdRate: 1, locale: Locale(identifier: "fr_CA"))
+            .milestoneLabel(amount: 1_000_000)
+        precondition(canadianBadge.contains("M") && canadianBadge.hasSuffix("$") && !canadianBadge.hasPrefix("$"))
         let suite = "CurrencyStoreTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite),
               let url = URL(string: "https://example.com/rates"),
@@ -24,6 +62,8 @@ struct CurrencyStoreTests {
         await upgraded.refreshIfNeeded(force: true) { _ in throw URLError(.notConnectedToInternet) }
         precondition(upgraded.lastUpdated != nil && upgraded.converted(usd: 100) == 90)
         precondition(upgraded.displayCurrency == .eur)
+        precondition(upgraded.quote(for: .eur)?.converted(usd: 100) == 90)
+        precondition(upgraded.quote(for: .sek) == nil)
         upgraded.currency = .sek
         precondition(upgraded.displayCurrency == .usd && upgraded.converted(usd: 100) == 100)
         upgraded.currency = .gbp
@@ -51,6 +91,12 @@ struct CurrencyStoreTests {
         }
         precondition(requests == 1 && !store.refreshing)
         precondition(store.displayCurrency == .gbp && store.converted(usd: 100) == 80)
+        precondition(store.quote(for: .eur, locale: english)?.formatted(usd: 100) == "€90.00")
+        precondition(store.quote(for: .jpy, locale: english)?.formatted(usd: 100) == "¥15,000")
+        precondition(store.quote(for: .usd, locale: english)?.formatted(usd: 100) == "$100.00")
+        precondition(store.quote(for: .krw, locale: english)?.formatted(usd: 100) == "₩130,000")
+        precondition(store.quote(for: .eur, locale: english)?.formatted(usd: 0.001) == "<€0.01")
+        precondition(store.quote(for: .krw, locale: english)?.formatted(usd: 0.0001) == "<₩1")
         store.currency = .krw
         precondition(store.converted(usd: 100) == 130000)
         precondition(store.displayUsesWholeUnits)
@@ -81,9 +127,9 @@ struct CurrencyStoreTests {
         precondition(requests == 3 && store.lastUpdated == now.addingTimeInterval(60))
         store.currency = .sek
         precondition(store.displayCurrency == .sek && store.converted(usd: 100) == 1050)
+        precondition(store.quote(for: .sek)?.converted(usd: 100) == 1050)
         precondition(store.displaySymbol == "SEK " && !store.displayUsesWholeUnits)
         let swedish = Locale(identifier: "sv_SE")
-        let english = Locale(identifier: "en_US")
         precondition(store.formatted(usd: 1, compact: false, locale: swedish) == "10,50 kr")
         precondition(store.formatted(usd: 1, compact: false, includesSymbol: false, locale: swedish) == "10,50")
         precondition(store.formatted(usd: 1, compact: false, locale: english) == "SEK 10.50")

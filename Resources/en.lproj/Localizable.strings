@@ -287,6 +287,11 @@
 
 "Weekly card" = "Weekly card";
 "About this card" = "About this card";
+"Currency" = "Currency";
+"Card currency" = "Card currency";
+"Exchange rate unavailable." = "Exchange rate unavailable.";
+"Refresh the rate or choose USD." = "Refresh the rate or choose USD.";
+"API value estimates your usage at API rates in USD, not your subscription bill. Other currencies use a reference exchange rate. Tokens include cache reads and writes." = "API value estimates your usage at API rates in USD, not your subscription bill. Other currencies use a reference exchange rate. Tokens include cache reads and writes.";
 "API value estimates your usage at API rates in USD, not your subscription bill. Tokens include cache reads and writes." = "API value estimates your usage at API rates in USD, not your subscription bill. Tokens include cache reads and writes.";
 "The card includes daily usage, provider totals, active days, and your signature. It does not include prompts or conversations." = "The card includes daily usage, provider totals, active days, and your signature. It does not include prompts or conversations.";
 "Fit" = "Fit";
