@@ -322,6 +322,19 @@ struct WeeklyUsageSnapshotTests {
             && priced.tier(for: .tokens, quote: wonQuote) == priced.tier(for: .tokens)
             && priced.shareText(metric: .apiValue, quote: poundQuote).contains("White card"),
                "converted card and caption use the same currency-based color")
+        let belowPoundMilestone = CurrencyQuote(currency: .gbp, usdRate: 0.05)
+        expect(priced.valueMilestone(for: belowPoundMilestone) == nil
+            && priced.valueChallenge(for: belowPoundMilestone) == "What does yours look like?"
+            && priced.shareText(metric: .apiValue, quote: belowPoundMilestone).contains("What does yours look like?")
+            && !priced.shareText(metric: .apiValue, quote: belowPoundMilestone).contains("Can you top this?"),
+               "USD milestone cannot unlock a challenge below the displayed-currency milestone")
+        let smallDollars = WeeklyUsageSnapshot.make(buckets: [.codex: [DailyTokenBucket(
+            dayStart: now, tokens: 1_000, billableTokens: 1_000, dollars: 1, unpricedTokens: 0
+        )]], now: now, calendar: calendar)
+        expect(smallDollars.valueMilestone == nil && smallDollars.valueMilestone(for: wonQuote) != nil
+            && smallDollars.valueChallenge(for: wonQuote) == "Can you top this?"
+            && smallDollars.shareText(metric: .apiValue, quote: wonQuote).contains("Can you top this?"),
+               "displayed-currency milestone unlocks the matching challenge even below the USD milestone")
         for wonAmount in [10_715_984.0, 17_028_122.0] {
             expect(WeeklyValueMilestone.earned(amount: wonAmount)?.label(in: .krw) == "₩10M"
                 && WeeklyCardTier.earned(usdDollars: wonAmount / wonQuote.usdRate, quote: wonQuote) == .blue,

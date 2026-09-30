@@ -159,7 +159,9 @@ struct WeeklyUsageSnapshot {
         .earned(amount: quote.converted(usd: totalDollars))
     }
     var valueHeadline: String { valueMilestone?.headline(for: period) ?? period.tokenHeadline }
-    var valueChallenge: String { valueMilestone == nil ? "What does yours look like?" : "Can you top this?" }
+    func valueChallenge(for quote: CurrencyQuote = .usd) -> String {
+        valueMilestone(for: quote) == nil ? "What does yours look like?" : "Can you top this?"
+    }
     var hasPartialPricing: Bool { providers.contains { $0.unpricedTokens > 0 } }
     var hasRecoveredHistory: Bool { recoveredTokens > 0 }
     var hasPricedUsage: Bool { providers.contains { $0.tokens > $0.unpricedTokens } }
@@ -300,7 +302,7 @@ struct WeeklyUsageSnapshot {
             \(dateLabel)
             API-rate estimate (\(currencyNote)), not a bill. Tokens include cache.\(caveat)\(pricing)
 
-            \(valueChallenge)
+            \(valueChallenge(for: quote))
             https://codexisland.com
             """
         }

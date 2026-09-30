@@ -112,7 +112,7 @@ struct WeeklyUsageCard: View {
     private var moneyHeadline: some View {
         var amount = quote.attributed(usd: snapshot.totalDollars)
         for run in Array(amount.runs) {
-            let isInteger = run.numberPart == .integer
+            let isInteger = run.numberPart == .integer || run.numberSymbol == .groupingSeparator
             let isCurrency = run.numberSymbol == .currency || String(amount[run.range].characters) == "<"
             let size: CGFloat = isInteger ? (compact ? 90 : 108)
                 : isCurrency ? (compact ? 42 : 50) : (compact ? 34 : 40)
@@ -170,7 +170,7 @@ struct WeeklyUsageCard: View {
                 Spacer(minLength: 4)
                 VStack(alignment: .trailing, spacing: 4) {
                     HStack(spacing: 5) {
-                        Text(metric == .apiValue ? snapshot.valueChallenge : snapshot.period.tokenCallToAction)
+                        Text(metric == .apiValue ? snapshot.valueChallenge(for: quote) : snapshot.period.tokenCallToAction)
                         Image(systemName: "arrow.up.right")
                     }
                     .font(.system(size: 11, weight: .medium))
