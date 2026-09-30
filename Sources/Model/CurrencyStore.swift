@@ -11,6 +11,7 @@ enum DisplayCurrency: String, CaseIterable, Codable, Identifiable {
     case cad = "CAD"
     case aud = "AUD"
     case chf = "CHF"
+    case sek = "SEK"
 
     var id: String { rawValue }
 
@@ -24,11 +25,81 @@ enum DisplayCurrency: String, CaseIterable, Codable, Identifiable {
         case .cad: "C$"
         case .aud: "A$"
         case .chf: "CHF "
+        case .sek: "SEK "
         }
+    }
+
+    func affixes(locale: Locale) -> (prefix: String, suffix: String) {
+        guard self == .sek else { return (symbol, "") }
+        let formatted = 1.0.formatted(.currency(code: rawValue).locale(locale).attributed)
+        let numbers = formatted.runs.filter { $0.numberPart != nil }
+        guard let first = numbers.first, let last = numbers.last else { return (symbol, "") }
+        return (String(formatted.characters[..<first.range.lowerBound]),
+                String(formatted.characters[last.range.upperBound...]))
     }
 
     var menuLabel: String { "\(rawValue)  \(symbol)" }
     var usesWholeUnits: Bool { self == .jpy || self == .krw }
+
+    var colorClubThresholds: (black: Double, blue: Double) {
+        switch self {
+        case .usd, .eur, .gbp, .cad, .aud, .chf: (1_000, 10_000)
+        case .cny, .sek: (10_000, 100_000)
+        case .jpy: (100_000, 1_000_000)
+        case .krw: (1_000_000, 10_000_000)
+        }
+    }
+}
+
+struct CurrencyQuote {
+    let currency: DisplayCurrency
+    let usdRate: Double
+    let locale: Locale
+
+    static var usd: CurrencyQuote { CurrencyQuote(currency: .usd, usdRate: 1) }
+
+    init(currency: DisplayCurrency, usdRate: Double, locale: Locale = L10n.locale) {
+        precondition(usdRate.isFinite && usdRate > 0)
+        self.currency = currency
+        self.usdRate = usdRate
+        self.locale = locale
+    }
+
+    func converted(usd: Double) -> Double { usd * usdRate }
+
+    func formatted(usd: Double) -> String {
+        String(attributed(usd: usd).characters)
+    }
+
+    func attributed(usd: Double) -> AttributedString {
+        let value = converted(usd: usd)
+        let amount = max(0, value.isFinite ? value : 0)
+        let minimum = currency.usesWholeUnits ? 1.0 : 0.01
+        var style = FloatingPointFormatStyle<Double>.Currency(code: currency.rawValue).locale(locale)
+        if amount > 0 && amount < minimum {
+            return AttributedString("<") + minimum.formatted(style.attributed)
+        }
+        let precision = currency.usesWholeUnits ? 1.0 : 100.0
+        let rounded = (amount * precision).rounded() / precision
+        let nextMilestone = amount < 100 ? 100 : pow(10, floor(log10(amount)) + 1)
+        if amount < nextMilestone, rounded >= nextMilestone, nextMilestone <= 1_000_000_000 {
+            style = style.rounded(rule: .towardZero)
+        }
+        return amount.formatted(style.attributed)
+    }
+
+    func milestoneLabel(amount: Double) -> String {
+        let style = FloatingPointFormatStyle<Double>.Currency(code: currency.rawValue)
+            .locale(locale).precision(.fractionLength(0))
+        var formatted = amount.formatted(style.attributed)
+        let numbers = formatted.runs.filter { $0.numberPart != nil }
+        guard let first = numbers.first, let last = numbers.last else { return String(formatted.characters) }
+        // Club abbreviations stay K/M/B while currency placement follows the locale.
+        let compact = amount.formatted(FloatingPointFormatStyle<Double>.number
+            .locale(Locale(identifier: "en_US")).precision(.fractionLength(0)).notation(.compactName))
+        formatted.replaceSubrange(first.range.lowerBound..<last.range.upperBound, with: AttributedString(compact))
+        return String(formatted.characters)
+    }
 }
 
 @MainActor
@@ -78,7 +149,7 @@ final class CurrencyStore: ObservableObject {
             .flatMap(DisplayCurrency.init(rawValue:)) ?? .usd
         if let data = defaults.data(forKey: Self.cacheKey),
            let decoded = try? JSONDecoder().decode(CachedRates.self, from: data),
-           Self.validRates(decoded.rates) {
+           Self.validRates(decoded.rates, requiringAllCurrencies: false) {
             cache = decoded
         } else {
             cache = nil
@@ -89,6 +160,12 @@ final class CurrencyStore: ObservableObject {
         usd * usdRate
     }
 
+    func quote(for currency: DisplayCurrency, locale: Locale = L10n.locale) -> CurrencyQuote? {
+        if currency == .usd { return CurrencyQuote(currency: .usd, usdRate: 1, locale: locale) }
+        guard let rate = cache?.rates[currency.rawValue] else { return nil }
+        return CurrencyQuote(currency: currency, usdRate: rate, locale: locale)
+    }
+
     var displayCurrency: DisplayCurrency {
         hasUsableRate ? currency : .usd
     }
@@ -96,6 +173,9 @@ final class CurrencyStore: ObservableObject {
     var displaySymbol: String {
         displayCurrency.symbol
     }
+
+    var displayPrefix: String { displayCurrency.affixes(locale: L10n.locale).prefix }
+    var displaySuffix: String { displayCurrency.affixes(locale: L10n.locale).suffix }
 
     var displayUsesWholeUnits: Bool {
         displayCurrency.usesWholeUnits
@@ -105,7 +185,7 @@ final class CurrencyStore: ObservableObject {
         currency == .usd || cache?.rates[currency.rawValue] != nil
     }
 
-    func formatted(usd: Double, compact: Bool = true, includesSymbol: Bool = true) -> String {
+    func formatted(usd: Double, compact: Bool = true, includesSymbol: Bool = true, locale: Locale = L10n.locale) -> String {
         let value = converted(usd: usd)
         let digits: Int
         if displayUsesWholeUnits || value >= 100 {
@@ -118,12 +198,13 @@ final class CurrencyStore: ObservableObject {
 
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
-        formatter.locale = L10n.locale
+        formatter.locale = locale
         formatter.minimumFractionDigits = digits
         formatter.maximumFractionDigits = digits
         formatter.usesGroupingSeparator = true
         let number = formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
-        return includesSymbol ? displaySymbol + number : number
+        let affixes = displayCurrency.affixes(locale: locale)
+        return includesSymbol ? affixes.prefix + number + affixes.suffix : number
     }
 
     func refresh() {
@@ -138,9 +219,10 @@ final class CurrencyStore: ObservableObject {
         }
     }
 
-    private static func validRates(_ rates: [String: Double]) -> Bool {
-        rates["USD"] == 1 && DisplayCurrency.allCases.allSatisfy {
-            guard let rate = rates[$0.rawValue] else { return false }
+    private static func validRates(_ rates: [String: Double], requiringAllCurrencies: Bool = true) -> Bool {
+        guard rates["USD"] == 1 else { return false }
+        return DisplayCurrency.allCases.allSatisfy {
+            guard let rate = rates[$0.rawValue] else { return !requiringAllCurrencies }
             return rate.isFinite && rate > 0
         }
     }

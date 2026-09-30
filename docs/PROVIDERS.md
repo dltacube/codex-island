@@ -5,7 +5,7 @@ occupies the left slot. Picking the provider already in the other slot swaps
 them; the central swap button does the same. Existing Claude/Codex visibility
 preferences migrate automatically, and order persists across launches.
 
-All providers use the same Ring, Bar, Stepped, Numeric, and Sparkline views,
+All providers use the same Ring, Bar, Stepped, and Sparkline views,
 used/remaining preference, peek pills, and threshold alerts. A provider's data
 selects the metrics; changing providers does not change the chart style.
 
@@ -17,6 +17,18 @@ Two reported windows retain the 5h/week pair. The discovered window list survive
 failed refreshes, so an offline request cannot bring back a removed 5h tile.
 Zero-percent windows remain visible. Peek and alerts select the same available
 window, and chart styles and history keys remain unchanged.
+
+## Claude Enterprise credits
+
+Enterprise accounts can report monthly `extra_usage` credits alongside or instead
+of the five-hour and weekly windows. The app converts cent amounts to currency
+units, keeps missing spend distinct from zero, and shows unlimited spend as an
+amount rather than a quota percentage. Credit amounts use the API currency.
+
+Monthly credit limits are evaluated independently for threshold alerts. Reset
+countdowns use only provider-supplied boundaries. Percentage-only history remains
+available to charts but is not used to seed monthly spend after relaunch. A failed
+refresh preserves a previous credit reading with the error shown beside it.
 
 ## Grok subscriptions
 

@@ -62,6 +62,7 @@ final class AlertEngine: ObservableObject {
         let provider: Provider
         let threshold: Threshold
         let resetAt: Date
+        var windowKind: UsageWindow = .fiveHour
     }
 
     private var crossings: Set<CrossingKey> = []
@@ -111,12 +112,12 @@ final class AlertEngine: ObservableObject {
             && AlertThresholdStore.warningRange.contains(warning)
             && AlertThresholdStore.criticalRange.contains(critical)
 
-        let inputs: [AlertDecision.WindowInput] = [
-            AlertDecision.WindowInput(
-                provider: .claude,
-                visible: visibility.claudeVisible,
-                window: usage.claude.peekWindow
-            ),
+        let claudeKinds: [UsageWindow] = usage.claude.visibleWindows.contains(.monthly) && usage.claude.peekWindowKind != .monthly
+            ? [usage.claude.peekWindowKind, .monthly] : [usage.claude.peekWindowKind]
+        let inputs: [AlertDecision.WindowInput] = claudeKinds.map { kind in
+            AlertDecision.WindowInput(provider: .claude, visible: visibility.claudeVisible,
+                window: usage.claude.window(kind), windowKind: kind)
+        } + [
             AlertDecision.WindowInput(
                 provider: .codex,
                 visible: visibility.codexVisible,
@@ -220,6 +221,7 @@ enum AlertDecision {
         let provider: AlertEngine.Provider
         let visible: Bool
         let window: WindowUsage
+        var windowKind: UsageWindow = .fiveHour
     }
 
     /// Returns severity per visible window whose percent meets at least the
@@ -234,12 +236,12 @@ enum AlertDecision {
         for input in inputs {
             guard input.visible else { continue }
             // Treat error-only states (no value, error set) as "no signal".
-            if !input.window.hasReading { continue }
+            if !input.window.hasPercentageReading { continue }
             let pct = input.window.percentInt
             if pct >= critical {
-                out[input.provider] = .critical
+                out[input.provider] = max(out[input.provider] ?? .none, .critical)
             } else if pct >= warning {
-                out[input.provider] = .warning
+                out[input.provider] = max(out[input.provider] ?? .none, .warning)
             }
         }
         return out
@@ -276,7 +278,7 @@ enum AlertDecision {
         for input in inputs {
             guard let currentReset = input.window.resetAt else { continue }
             next = next.filter { key in
-                key.provider != input.provider || key.resetAt == currentReset
+                key.provider != input.provider || key.windowKind != input.windowKind || key.resetAt == currentReset
             }
         }
 
@@ -287,7 +289,7 @@ enum AlertDecision {
         for input in inputs {
             guard input.visible else { continue }
             guard let resetAt = input.window.resetAt else { continue }
-            if !input.window.hasReading { continue }
+            if !input.window.hasPercentageReading { continue }
             let pct = input.window.percentInt
 
             for threshold in [AlertEngine.Threshold.warning, AlertEngine.Threshold.critical] {
@@ -296,7 +298,8 @@ enum AlertDecision {
                 let key = AlertEngine.CrossingKey(
                     provider: input.provider,
                     threshold: threshold,
-                    resetAt: resetAt
+                    resetAt: resetAt,
+                    windowKind: input.windowKind
                 )
                 if !next.contains(key) {
                     next.insert(key)
@@ -307,7 +310,7 @@ enum AlertDecision {
             // Build pulse line per provider that crossed any threshold this
             // tick — coalesces both providers into a single event when both
             // happen on the same usage update.
-            if newCrossings.contains(where: { $0.provider == input.provider }) {
+            if newCrossings.contains(where: { $0.provider == input.provider && $0.windowKind == input.windowKind }) {
                 let sev: AlertEngine.Severity = pct >= critical
                     ? .critical
                     : (pct >= warning ? .warning : .none)

@@ -90,7 +90,7 @@ final class UsageHistoryStore: ObservableObject {
     }
 
     private func append(_ k: String, _ reading: WindowUsage, _ at: Date) -> Bool {
-        guard reading.error == nil else { return false }
+        guard reading.error == nil, reading.hasPercentageReading else { return false }
         var arr = series[k] ?? []
         arr.append(UsageSample(at: at, used: max(0, min(1, reading.usedPercent))))
         let cutoff = at.addingTimeInterval(-Self.maxAge)

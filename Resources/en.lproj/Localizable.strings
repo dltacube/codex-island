@@ -82,7 +82,6 @@
 "no %@ activity in last 5h or this week" = "no %@ activity in last 5h or this week";
 "No Activity" = "No Activity";
 "Notch-style" = "Notch-style";
-"Numeric" = "Numeric";
 "Open CodexIsland when you sign in." = "Open CodexIsland when you sign in.";
 "Overview" = "Overview";
 "Overview shows %@ usage history" = "Overview shows %@ usage history";
@@ -161,6 +160,9 @@
 "Show usage as used or remaining quota." = "Show usage as used or remaining quota.";
 "Usage display" = "Usage display";
 "Used" = "Used";
+"Quota left" = "Left";
+"Reset" = "Reset";
+"Window" = "Window";
 "Keep the percentage and time remaining visible without hovering." = "Keep the percentage and time remaining visible without hovering.";
 "Inject test percentages. Visible only when launched with CODEXISLAND_DEBUG=1." = "Inject test percentages. Visible only when launched with CODEXISLAND_DEBUG=1.";
 "Preview" = "Preview";
@@ -288,6 +290,11 @@
 
 "Weekly card" = "Weekly card";
 "About this card" = "About this card";
+"Currency" = "Currency";
+"Card currency" = "Card currency";
+"Exchange rate unavailable." = "Exchange rate unavailable.";
+"Refresh the rate or choose USD." = "Refresh the rate or choose USD.";
+"API value estimates your usage at API rates in USD, not your subscription bill. Other currencies use a reference exchange rate. Tokens include cache reads and writes." = "API value estimates your usage at API rates in USD, not your subscription bill. Other currencies use a reference exchange rate. Tokens include cache reads and writes.";
 "API value estimates your usage at API rates in USD, not your subscription bill. Tokens include cache reads and writes." = "API value estimates your usage at API rates in USD, not your subscription bill. Tokens include cache reads and writes.";
 "The card includes daily usage, provider totals, active days, and your signature. It does not include prompts or conversations." = "The card includes daily usage, provider totals, active days, and your signature. It does not include prompts or conversations.";
 "Fit" = "Fit";
@@ -374,3 +381,7 @@
 "%@: %d percent of monthly credits remaining" = "%@: %d percent of monthly credits remaining";
 "%@: %d percent of monthly credits used, %@" = "%@: %d percent of monthly credits used, %@";
 "%@: %d percent of monthly credits remaining, %@" = "%@: %d percent of monthly credits remaining, %@";
+"History appears after more refreshes." = "History appears after more refreshes.";
+"Recorded usage" = "Recorded usage";
+
+"Sample usage" = "Sample usage";

@@ -82,28 +82,45 @@ struct IslandRootView: View {
                     }
                 }
                 .overlay(alignment: .topTrailing) {
-                    if model.state != .expanded, let right = visibility.right {
-                        ProviderMark(provider: right)
-                            .padding(.trailing, logoEdgePadding)
-                            .padding(.top, max(0, (model.notch.height - 20) / 2))
+                    if model.state != .expanded {
+                        if let right = visibility.right {
+                            ProviderMark(provider: right)
+                                .padding(.trailing, logoEdgePadding)
+                                .padding(.top, max(0, (model.notch.height - 20) / 2))
+                        } else {
+                            PeekPillOverlay(provider: visibility.left, isLeft: false,
+                                topPadding: 0, pillsVisible: true,
+                                contents: .gauge, edgePadding: logoEdgePadding, slotWidth: 20,
+                                availableHeight: model.notch.height,
+                                gaugeProgress: model.state == .peek ? 1 : 0)
+                        }
                     }
                 }
                 .overlay(alignment: .topLeading) {
-                    if model.state != .compact {
+                    if model.state != .expanded {
                         PeekPillOverlay(provider: visibility.left, isLeft: true,
-                            topPadding: max(0, (model.notch.height - 14) / 2), pillsVisible: pillsVisible)
+                            topPadding: 0, pillsVisible: true,
+                            contents: visibility.right == nil ? .reset : .stacked,
+                            edgePadding: 9,
+                            slotWidth: model.state == .peek ? model.pillSlotWidth - 14 : 0,
+                            availableHeight: model.notch.height,
+                            showsResetCaption: model.notch.height >= 32,
+                            revealProgress: model.state == .peek ? 1 : 0)
                     }
                 }
                 .overlay(alignment: .topTrailing) {
-                    if model.state != .compact, let right = visibility.right {
+                    if model.state != .expanded, let right = visibility.right {
                         PeekPillOverlay(provider: right, isLeft: false,
-                            topPadding: max(0, (model.notch.height - 14) / 2), pillsVisible: pillsVisible)
+                            topPadding: 0, pillsVisible: true, contents: .stacked, edgePadding: 9,
+                            slotWidth: model.state == .peek ? model.pillSlotWidth - 14 : 0,
+                            availableHeight: model.notch.height,
+                            revealProgress: model.state == .peek ? 1 : 0)
                     }
                 }
                 .contentShape(IslandShape())
                 .onTapGesture {
                     // Cmd-click cycles the visualization style of whichever
-                    // page is active. Usage rotates Ring/Bar/Stepped/Numeric/
+                    // page is active. Usage rotates Ring/Bar/Stepped/
                     // Spark; cost rotates USD/VALUE/TOKENS/TREND. Overview
                     // is fixed to year-to-date.
                     if NSEvent.modifierFlags.contains(.command) {
@@ -427,6 +444,13 @@ private struct PeekPillOverlay: View {
     let isLeft: Bool
     let topPadding: CGFloat
     let pillsVisible: Bool
+    var contents: NotchPeekPill.Contents = .combined
+    var edgePadding: CGFloat = 14
+    var slotWidth: CGFloat? = nil
+    var availableHeight: CGFloat? = nil
+    var gaugeProgress: CGFloat = 0
+    var showsResetCaption = false
+    var revealProgress: CGFloat = 1
 
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
     @ObservedObject private var connections = ProviderConnectionStore.shared
@@ -436,16 +460,31 @@ private struct PeekPillOverlay: View {
 
     var body: some View {
         let window = currentWindow
-        NotchPeekPill(
+        let pill = NotchPeekPill(
             usage: window,
             loading: provider.usesLegacyUsage ? usageStore.loading : connections.loading.contains(provider),
             tint: tint,
             alignment: isLeft ? .leading : .trailing,
             severity: severity,
             windowLengthFallback: provider.usesLegacyUsage
-                ? (currentWindowIsMonthly ? "mo" : currentWindowIsWeekly ? "7d" : "5h") : ""
+                ? (currentWindowIsMonthly ? "" : currentWindowIsWeekly ? "7d" : "5h") : "",
+            contents: contents,
+            gaugeProgress: gaugeProgress,
+            gaugeHeight: availableHeight ?? 38,
+            showsResetCaption: showsResetCaption
         )
-        .padding(isLeft ? .leading : .trailing, 14)
+        Group {
+            if contents == .reset || contents == .stacked {
+                pill
+                    .modifier(PeekContentReveal(progress: revealProgress, start: 0.45, end: 1))
+                    .animation(PeekMotion.animation(opening: revealProgress > 0), value: revealProgress)
+                    .frame(width: slotWidth, height: availableHeight, alignment: isLeft ? .trailing : .leading)
+                    .mask { Rectangle().padding(isLeft ? .leading : .trailing, -edgePadding) }
+            } else {
+                pill.frame(width: slotWidth, height: availableHeight, alignment: isLeft ? .trailing : .leading)
+            }
+        }
+        .padding(isLeft ? .leading : .trailing, edgePadding)
         .padding(.top, topPadding)
         // Two opacity bindings stack:
         //   - `pillsVisible` is the peek lifecycle (hover-in / hover-out).
@@ -457,13 +496,15 @@ private struct PeekPillOverlay: View {
         .animation(.openMorph, value: isVisible)
         .offset(x: pillsVisible ? 0 : (isLeft ? -6 : 6))
         .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(peekLabel(for: window, provider: providerLabel,
                                       weekly: currentWindowIsWeekly, monthly: currentWindowIsMonthly))
         // Mirror the visual opacity gate exactly — both `pillsVisible` and
         // `isVisible` must be true for the pill to render. Keying the
         // accessibility hide on only `isVisible` lets VoiceOver reach a
         // pill that is visually invisible during the peek-out lifecycle.
-        .accessibilityHidden(!(pillsVisible && isVisible))
+        .accessibilityHidden(!(pillsVisible && isVisible) || contents == .reset || contents == .percentage
+            || (contents == .stacked && revealProgress == 0))
     }
 
     private var isVisible: Bool {
@@ -512,6 +553,10 @@ private struct PeekPillOverlay: View {
             if monthly { return L10n.tr("%@: no data for monthly window", provider) }
             return weekly ? L10n.tr("%@: no data for weekly window", provider)
                 : L10n.tr("%@: no data for 5-hour window", provider)
+        }
+        if window.isUnlimitedAmount, let amount = window.usedAmount {
+            return L10n.tr("%@, %@ spent, unlimited", provider,
+                           UsageCreditDisplay.currency(amount, code: window.currencyCode))
         }
         let mode = UsageDisplayModeStore.shared.mode
         let pct = window.displayedPercentInt(mode: mode)

@@ -210,7 +210,7 @@ struct UsageChartsRow: View {
             }
             if ringsHugContent { Spacer(minLength: 18) }
         }
-        .frame(maxWidth: metrics.count == 1 ? (style == .numeric ? 180 : 240) : .infinity)
+        .frame(maxWidth: metrics.count == 1 ? 240 : .infinity)
         .frame(maxWidth: .infinity, alignment: .center)
     }
 }
@@ -248,7 +248,6 @@ struct ChartTile: View {
                 case .ring:    RingChart(value: value, color: color, label: label, sub: sub, centered: centered)
                 case .bar:     BarChart(value: value, color: color, label: label, sub: sub)
                 case .stepped: SteppedChart(value: value, color: color, label: label, sub: sub)
-                case .numeric: NumericChart(value: value, color: color, label: label, sub: compactSubCaption())
                 case .spark:   SparkChart(value: value, color: color, label: label, sub: sub,
                                           seed: seed, history: historyPoints())
                 }
@@ -296,16 +295,10 @@ struct ChartTile: View {
     }
 
     private func subCaption() -> String {
-        if let used = window.usedAmount, let limit = window.limitAmount {
-            let amounts = L10n.tr("%@ / %@ spent", Self.currency(used, code: window.currencyCode),
-                                  Self.currency(limit, code: window.currencyCode))
+        if let amounts = window.amountCaption {
+            if let error = window.error, error != "no data" { return amounts + " · " + error }
             guard let resetAt = window.resetAt else { return amounts }
             return amounts + " · " + L10n.tr("resets in %@", Duration.compact(max(0, resetAt.timeIntervalSinceNow)))
-        }
-        if let used = window.usedAmount {
-            let amount = L10n.tr("%@ spent · unlimited", Self.currency(used, code: window.currencyCode))
-            guard let resetAt = window.resetAt else { return amount }
-            return amount + " · " + L10n.tr("resets in %@", Duration.compact(max(0, resetAt.timeIntervalSinceNow)))
         }
         if let r = window.resetAt {
             let delta = max(0, r.timeIntervalSinceNow)
@@ -325,29 +318,8 @@ struct ChartTile: View {
         return ""
     }
 
-    private func compactSubCaption() -> String {
-        if let used = window.usedAmount, let limit = window.limitAmount {
-            return L10n.tr("%@ / %@ spent", Self.currency(used, code: window.currencyCode),
-                           Self.currency(limit, code: window.currencyCode))
-        }
-        if let used = window.usedAmount {
-            return L10n.tr("%@ spent · unlimited", Self.currency(used, code: window.currencyCode))
-        }
-        if let r = window.resetAt {
-            let delta = max(0, r.timeIntervalSinceNow)
-            return "↻ " + Duration.compact(delta)
-        }
-        if let err = window.error, err != "no data" {
-            return err
-        }
-        return ""
-    }
-
     private static func currency(_ amount: Double, code: String?) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = code ?? "USD"
-        return formatter.string(from: NSNumber(value: amount)) ?? "\(amount)"
+        UsageCreditDisplay.currency(amount, code: code)
     }
 }
 

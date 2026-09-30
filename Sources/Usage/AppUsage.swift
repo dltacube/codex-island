@@ -108,7 +108,7 @@ struct AppUsage {
     var visibleWindows: [UsageWindow] {
         let order: [UsageWindow] = [.fiveHour, .weekly, .monthly]
         if let reportedWindows { return order.filter { reportedWindows.contains($0) } }
-        return order.filter { !window($0).isUnreported }
+        return order.filter { !window($0).isUnreported && ($0 != .monthly || window($0).hasReading) }
     }
 
     func window(_ kind: UsageWindow) -> WindowUsage {
@@ -122,10 +122,9 @@ struct AppUsage {
     var peekWindow: WindowUsage { window(peekWindowKind) }
 
     var peekWindowKind: UsageWindow {
-        if visibleWindows.contains(.fiveHour) { return .fiveHour }
-        if visibleWindows.contains(.weekly) { return .weekly }
-        if visibleWindows.contains(.monthly) { return .monthly }
-        return .fiveHour
+        let visible = visibleWindows
+        if visible.count == 1 { return visible[0] }
+        return visible.first { window($0).hasReading } ?? visible.first ?? .fiveHour
     }
 
     /// Which window `peekWindow` selected — the peek chrome (VoiceOver label,
