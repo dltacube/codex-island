@@ -5,7 +5,7 @@ import SwiftUI
 /// by the caller, label at the bottom. Used by `ChartStylePicker` and
 /// `CostStylePicker`.
 struct StyleTile<Preview: View>: View {
-    let label: String
+    let displayLabel: String
     let isOn: Bool
     let action: () -> Void
     @ViewBuilder let preview: () -> Preview
@@ -16,7 +16,7 @@ struct StyleTile<Preview: View>: View {
                 preview()
                     .frame(height: 34)
                     .accessibilityHidden(true)
-                Text(label)
+                Text(displayLabel)
                     .font(Typography.micro)
                     .foregroundStyle(isOn
                         ? Color(red: 0.58, green: 0.75, blue: 1.0)
@@ -42,8 +42,9 @@ struct StyleTile<Preview: View>: View {
                             : .clear, radius: 9)
             }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
+        .buttonStyle(PressableButtonStyle(scale: 0.97))
+        .animation(.hoverFade, value: isOn)
+        .accessibilityLabel(displayLabel)
         .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
     }
 }

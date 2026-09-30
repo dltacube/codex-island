@@ -20,7 +20,7 @@ struct SettingsFooter: View {
             Button {
                 NSApp.terminate(nil)
             } label: {
-                Text("Quit")
+                Text(L10n.tr("Quit"))
                     .font(Typography.label)
                     .foregroundStyle(.white.opacity(quitHovered ? 0.92 : 0.55))
                     .padding(.horizontal, 11)
@@ -34,10 +34,10 @@ struct SettingsFooter: View {
                             }
                     }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressableButtonStyle(scale: 0.97))
             .onHover { quitHovered = $0 }
-            .help("Quit CodexIsland")
-            .animation(.strongEaseOut, value: quitHovered)
+            .help(L10n.tr("Quit CodexIsland"))
+            .animation(.hoverFade, value: quitHovered)
         }
         .padding(.horizontal, 24)
         .padding(.top, 12)
@@ -60,7 +60,7 @@ private struct DottedLink: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Text(title)
+                Text(L10n.tr(title))
                     .font(Typography.label)
                     .foregroundStyle(.white.opacity(hovered ? 0.92 : 0.55))
                 Text("↗")
@@ -83,8 +83,8 @@ private struct DottedLink: View {
             }
             .padding(.bottom, 2)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle(scale: 0.97))
         .onHover { hovered = $0 }
-        .animation(.easeOut(duration: 0.10), value: hovered)
+        .animation(.hoverFade, value: hovered)
     }
 }

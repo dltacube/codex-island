@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// Two-page horizontal carousel: the usage data row (page 0) and the cost
-/// data row (page 1). Both pages render at the full content width; the
-/// HStack is twice that width and slides via `.offset` based on
-/// `ScreenPref.screen`. Animation uses the same spring as the expanded-
-/// state shape morph for cohesion.
+/// Three-page horizontal carousel: live usage (page 0), cost (page 1), and
+/// history overview (page 2). Each page renders at the full content width;
+/// the layout slides based on
+/// `ScreenPref.screen`. Horizontal movement gets its own drawer-style curve
+/// so page navigation does not inherit the island shape's spring bounce.
 ///
 /// Only the data row swipes — `PanelHeader` and `PanelFooter` are mounted
 /// outside this view so they stay fixed across page changes.
@@ -14,39 +14,58 @@ import SwiftUI
 /// left to reveal the cost screen's edge, then settles back. Subtle and
 /// time-bounded so it stops nagging once they've discovered the gesture.
 struct PagedContent: View {
+    @ObservedObject var model: IslandModel
     @ObservedObject private var screenPref = ScreenPref.shared
     @State private var peekOffset: CGFloat = 0
+    @State private var bumpOffset: CGFloat = 0
 
     var body: some View {
-        GeometryReader { geo in
-            let pageWidth = geo.size.width
-            HStack(spacing: 0) {
-                UsageView()
-                    .frame(width: pageWidth)
-                CostView()
-                    .frame(width: pageWidth)
+        ContentSizedPageLayout(selectedPage: screenPref.screen.pageIndex,
+                               position: CGFloat(screenPref.screen.pageIndex),
+                               feedbackOffset: peekOffset + bumpOffset) {
+            UsageView()
+                .padding(.vertical, IslandPanelLayout.dataVerticalInset)
+                .accessibilityHidden(screenPref.screen != .usage)
+            CostView()
+                .padding(.vertical, IslandPanelLayout.dataVerticalInset)
+                .accessibilityHidden(screenPref.screen != .cost)
+            OverviewView()
+                .accessibilityHidden(screenPref.screen != .overview)
+        }
+        .clipped()
+        .onAppear {
+            // Discoverability cue, not decorative motion — fires even
+            // when @Environment(\.accessibilityReduceMotion) is on,
+            // because without it reduce-motion users have no path to
+            // learn the second screen exists. The motion is brief
+            // (~1s total) and slow-eased.
+            guard !screenPref.hasSwipedScreen,
+                  screenPref.screen == .usage
+            else { return }
+            schedulePeek()
+        }
+        .onChange(of: screenPref.hasSwipedScreen) { swiped in
+            // User swiped mid-peek: collapse the peek smoothly so the
+            // composite offset doesn't jump when the real screen
+            // transition fires alongside it.
+            if swiped, peekOffset != 0 {
+                withAnimation(.pageSwipe) { peekOffset = 0 }
             }
-            .frame(width: pageWidth, alignment: .leading)
-            .offset(x: (screenPref.screen == .usage ? 0 : -pageWidth) + peekOffset)
-            .animation(.openMorph, value: screenPref.screen)
-            .clipped()
-            .onAppear {
-                // Discoverability cue, not decorative motion — fires even
-                // when @Environment(\.accessibilityReduceMotion) is on,
-                // because without it reduce-motion users have no path to
-                // learn the second screen exists. The motion is brief
-                // (~1s total) and slow-eased.
-                guard !screenPref.hasSwipedScreen,
-                      screenPref.screen == .usage
-                else { return }
-                schedulePeek()
+        }
+        .onChange(of: model.edgeBump) { bump in
+            // Rubber-band at the carousel ends: an over-swipe nudges
+            // the row 12pt toward the attempted direction and springs
+            // back, so the dead-end gesture reads as "you're at the
+            // edge" instead of a dropped input. The bumpOffset == 0
+            // guard swallows Shift+wheel tick spam while a bump is
+            // already in flight.
+            guard let bump, bumpOffset == 0 else { return }
+            withAnimation(.easeOut(duration: 0.10)) {
+                bumpOffset = bump.direction > 0 ? -12 : 12
             }
-            .onChange(of: screenPref.hasSwipedScreen) { swiped in
-                // User swiped mid-peek: collapse the peek smoothly so the
-                // composite offset doesn't jump when the real screen
-                // transition fires alongside it.
-                if swiped, peekOffset != 0 {
-                    withAnimation(.easeOut(duration: 0.25)) { peekOffset = 0 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.62)) {
+                    bumpOffset = 0
                 }
             }
         }
@@ -58,17 +77,13 @@ struct PagedContent: View {
         // beat is its own gesture instead of competing with the entrance.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.40) {
             guard !screenPref.hasSwipedScreen else { return }
-            // Reuse the panel-open spring so the peek inherits the same
-            // motion identity that brought the panel into view. Springs
-            // also hand off cleanly to a real swipe if the user grabs
-            // mid-peek (both gestures animate via the same physics).
-            withAnimation(.openMorph) { peekOffset = -46 }
-            // Out spring settles ~0.42s; hold ~0.20s past settle, then
-            // return with closeMorph — snappier, matching the asymmetric
-            // open/close pace already established for the panel itself.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.62) {
+            // This is horizontal navigation affordance, so use the same
+            // page curve as real swipes. It feels connected to the carousel
+            // instead of to the panel's physical resize.
+            withAnimation(.pageSwipe) { peekOffset = -46 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.58) {
                 guard !screenPref.hasSwipedScreen else { return }
-                withAnimation(.closeMorph) { peekOffset = 0 }
+                withAnimation(.pageSwipe) { peekOffset = 0 }
             }
         }
     }

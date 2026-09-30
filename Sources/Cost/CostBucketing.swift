@@ -3,7 +3,7 @@ import Foundation
 /// Time-window helpers for the cost screen. Calendar-local so "today" and
 /// "this month" line up with the wall clock the user is glancing at.
 ///
-/// Aggregation lives in `CostStore.summarize` (single-pass over all events).
+/// Aggregation lives in `CostSummary.summarize` (single-pass over all events).
 /// What's left here is the chrome the cell labels need: month name + reset
 /// countdowns.
 enum CostBucketing {
@@ -15,7 +15,7 @@ enum CostBucketing {
 
     private static let monthFormatter: DateFormatter = {
         let f = DateFormatter()
-        f.locale = .current
+        f.locale = L10n.locale
         f.timeZone = .current
         f.setLocalizedDateFormatFromTemplate("MMM")
         return f
@@ -53,14 +53,21 @@ enum CostBucketing {
     }
 }
 
-/// Shared `TimeInterval` → "Ns/Nm/Nh/Nd" formatter. Used by the cost reset
-/// glyph and the usage screen's reset caption so both screens use the same
-/// vocabulary for "time remaining".
+/// Shared `TimeInterval` → compact remaining-time string. Used by the cost
+/// reset glyph, usage captions, and the notch peek pill so every surface
+/// speaks the same vocabulary.
+///
+/// Buckets: `Ns` / `Nm` / `Nh` under a day; at ≥1 day, `Nd` when the hour
+/// remainder is zero, otherwise `Nd Nh` (e.g. `6d 23h`). Plain `167h` is
+/// hard to parse once weekly Codex windows replaced the old 5h limit.
 enum Duration {
     static func compact(_ seconds: TimeInterval) -> String {
         if seconds < 60 { return "\(Int(seconds))s" }
         if seconds < 3600 { return "\(Int(seconds / 60))m" }
         if seconds < 86400 { return "\(Int(seconds / 3600))h" }
-        return "\(Int(seconds / 86400))d"
+        let days = Int(seconds / 86400)
+        let hours = Int(seconds.truncatingRemainder(dividingBy: 86400) / 3600)
+        if hours == 0 { return "\(days)d" }
+        return "\(days)d \(hours)h"
     }
 }

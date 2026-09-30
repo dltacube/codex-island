@@ -27,6 +27,11 @@ struct CostWindow {
     /// doesn't silently read as $0.
     let unknownModels: [String]
 
+    static func unavailable(label: String, reason: String) -> CostWindow {
+        CostWindow(dollars: 0, tokens: 0, billableTokens: 0, series: [], label: label,
+                   error: reason, unknownModels: [])
+    }
+
     static let unknown = CostWindow(
         dollars: 0, tokens: 0, billableTokens: 0, series: [], label: "—",
         error: "no data", unknownModels: []
@@ -61,6 +66,20 @@ struct ModelUsageRow {
     let dollarPercent: Double
 }
 
+/// Calendar-local daily token total used by the overview contribution grid.
+/// Stores both wire-level and billable totals so future views can choose the
+/// metric without re-scanning session logs. The overview intentionally uses
+/// wire-level volume.
+struct DailyTokenBucket: Codable {
+    let dayStart: Date
+    let tokens: Int
+    let billableTokens: Int
+    // Optional so older caches stay readable without inventing a $0 price.
+    var dollars: Double? = nil
+    var unpricedTokens: Int? = nil
+    var recoveredTokens: Int? = nil
+}
+
 /// Per-provider cost summary: today + month-to-date in calendar-local time.
 struct ProviderCost {
     var today: CostWindow
@@ -72,11 +91,14 @@ struct ProviderCost {
     /// Per-model breakdown over the rolling last 7 days, sorted by tokens
     /// descending. Approximates the weekly window used by the live tiles.
     var weekByModel: [ModelUsageRow] = []
+    /// Calendar-local daily history, oldest first, with today included as
+    /// the final bucket. Powers the overview contribution grid ranges.
+    var dailyTokens: [DailyTokenBucket] = []
 
     static let empty = ProviderCost(
         today: CostWindow(
             dollars: 0, tokens: 0, billableTokens: 0, series: [],
-            label: "Today", error: nil, unknownModels: []
+            label: L10n.tr("Today"), error: nil, unknownModels: []
         ),
         month: CostWindow(
             dollars: 0, tokens: 0, billableTokens: 0, series: [],
@@ -84,7 +106,8 @@ struct ProviderCost {
             unknownModels: []
         ),
         recentByModel: [],
-        weekByModel: []
+        weekByModel: [],
+        dailyTokens: []
     )
 
     /// Placeholder values shown when a provider is toggled off in Settings.
@@ -94,7 +117,7 @@ struct ProviderCost {
         today: CostWindow(
             dollars: 11.25, tokens: 1_240_000, billableTokens: 124_000,
             series: [0.5, 1.2, 2.4, 3.6, 5.1, 7.0, 9.2, 11.25],
-            label: "Today", error: nil, unknownModels: []
+            label: L10n.tr("Today"), error: nil, unknownModels: []
         ),
         month: CostWindow(
             dollars: 142.0, tokens: 18_500_000, billableTokens: 1_850_000,
@@ -103,6 +126,7 @@ struct ProviderCost {
             unknownModels: []
         ),
         recentByModel: [],
-        weekByModel: []
+        weekByModel: [],
+        dailyTokens: []
     )
 }

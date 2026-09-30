@@ -6,10 +6,11 @@ import Combine
 /// severity, and emits one-shot `pulseEvent`s when a tracked 5-hour window
 /// first crosses a threshold inside its current reset cycle.
 ///
-/// The pure-function helpers (`computeSeverity`, `evaluateCrossings`) are
-/// intentionally factored out so they remain unit-testable later if/when
-/// the project gains a test target — today there isn't one (the build is
-/// `swiftc` over `Sources/**/*.swift`, no SwiftPM, no XCTest).
+/// The threshold-crossing judgment lives in the `AlertDecision` enum below
+/// — a pure namespace with no singletons, Combine, or side effects — so it
+/// stays unit-testable later if/when the project gains a test target (today
+/// there isn't one: the build is `swiftc` over `Sources/**/*.swift`, no
+/// SwiftPM, no XCTest).
 @MainActor
 final class AlertEngine: ObservableObject {
     static let shared = AlertEngine()
@@ -24,10 +25,7 @@ final class AlertEngine: ObservableObject {
         }
     }
 
-    enum Provider: String, Hashable {
-        case claude
-        case codex
-    }
+    typealias Provider = IslandProvider
 
     enum Threshold: Int, Hashable {
         case warning, critical
@@ -45,9 +43,11 @@ final class AlertEngine: ObservableObject {
         let lines: [PulseLine]
     }
 
-    /// Highest severity across visible 5h windows currently at/above their
-    /// respective threshold. Drives the silhouette glow color.
+    /// Highest severity across visible primary windows at/above their
+    /// respective threshold. Drives the silhouette glow color for the provider's
+    /// primary reported window, including Enterprise monthly usage credits.
     @Published private(set) var severity: Severity = .none
+    @Published private(set) var providerSeverities: [Provider: Severity] = [:]
 
     /// One-shot pulse event. UI sets back to `nil` after consuming.
     @Published var pulseEvent: PulseEvent?
@@ -61,7 +61,8 @@ final class AlertEngine: ObservableObject {
     struct CrossingKey: Hashable {
         let provider: Provider
         let threshold: Threshold
-        let resetAt: Date
+        let resetAt: Date?
+        var windowKind: UsageWindow = .fiveHour
     }
 
     private var crossings: Set<CrossingKey> = []
@@ -80,6 +81,8 @@ final class AlertEngine: ObservableObject {
         let triggers: [AnyPublisher<Void, Never>] = [
             UsageStore.shared.$claude.map { _ in () }.eraseToAnyPublisher(),
             UsageStore.shared.$codex.map { _ in () }.eraseToAnyPublisher(),
+            ProviderConnectionStore.shared.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
+            ProviderQuotaPreferences.shared.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
             AlertThresholdStore.shared.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
             ProviderVisibilityStore.shared.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
         ]
@@ -109,24 +112,31 @@ final class AlertEngine: ObservableObject {
             && AlertThresholdStore.warningRange.contains(warning)
             && AlertThresholdStore.criticalRange.contains(critical)
 
-        let inputs: [WindowInput] = [
-            WindowInput(
-                provider: .claude,
-                visible: visibility.claudeVisible,
-                window: usage.claude.fiveHour
-            ),
-            WindowInput(
+        let claudeKinds: [UsageWindow] = usage.claude.visibleWindows.contains(.monthly) && usage.claude.peekWindowKind != .monthly
+            ? [usage.claude.peekWindowKind, .monthly] : [usage.claude.peekWindowKind]
+        let inputs: [AlertDecision.WindowInput] = claudeKinds.map { kind in
+            AlertDecision.WindowInput(provider: .claude, visible: visibility.claudeVisible,
+                window: usage.claude.window(kind), windowKind: kind)
+        } + [
+            AlertDecision.WindowInput(
                 provider: .codex,
                 visible: visibility.codexVisible,
-                window: usage.codex.fiveHour
+                // peekWindow, not fiveHour: weekly-only Codex plans report no
+                // 5h window, and severity must track the same number the peek
+                // pill and silhouette tint surface. Two-window plans still
+                // alert on 5h (peekWindow prefers it).
+                window: usage.codex.peekWindow
             ),
-        ]
+        ] + [IslandProvider.grok, .antigravity].map { provider in
+            AlertDecision.WindowInput(provider: provider, visible: visibility.selected.contains(provider),
+                window: ProviderConnectionStore.shared.primary(provider)?.window ?? .unknown)
+        }
 
         // Severity drives the silhouette tint and is always computed: a
         // user launching at 96% should see red immediately, even before
         // crossing memory has formed.
         let perWindowSeverity: [Provider: Severity] = enabled && validThresholds
-            ? Self.computeSeverity(
+            ? AlertDecision.computeSeverity(
                 inputs: inputs,
                 warning: warning,
                 critical: critical
@@ -135,7 +145,8 @@ final class AlertEngine: ObservableObject {
 
         let claudeSev = perWindowSeverity[.claude] ?? .none
         let codexSev = perWindowSeverity[.codex] ?? .none
-        let combined = max(claudeSev, codexSev)
+        let combined = perWindowSeverity.values.max() ?? .none
+        if perWindowSeverity != providerSeverities { providerSeverities = perWindowSeverity }
 
         if claudeSev != self.claudeSeverity { self.claudeSeverity = claudeSev }
         if codexSev != self.codexSeverity { self.codexSeverity = codexSev }
@@ -156,7 +167,7 @@ final class AlertEngine: ObservableObject {
         // first recompute that sees `lastUpdated != nil` consumes warmup.
         guard usage.lastUpdated != nil else { return }
 
-        let result = Self.evaluateCrossings(
+        let result = AlertDecision.evaluateCrossings(
             previous: crossings,
             inputs: inputs,
             warning: warning,
@@ -195,13 +206,22 @@ final class AlertEngine: ObservableObject {
         // This keeps the engine free of view-state coupling.
         return false
     }
+}
 
-    // MARK: - Pure helpers (unit-testable)
+// MARK: - Pure decision (unit-testable)
 
+/// The threshold-crossing judgment, separated from the Combine wiring and
+/// mutable state in `AlertEngine`. No singletons, no Combine, no side
+/// effects — given plain inputs (current windows, thresholds, prior
+/// crossing memory, warmup flag) it returns the alert outcome. Kept apart
+/// so it remains unit-testable later if/when the project gains a test
+/// target — today there isn't one.
+enum AlertDecision {
     struct WindowInput {
-        let provider: Provider
+        let provider: AlertEngine.Provider
         let visible: Bool
         let window: WindowUsage
+        var windowKind: UsageWindow = .fiveHour
     }
 
     /// Returns severity per visible window whose percent meets at least the
@@ -211,29 +231,27 @@ final class AlertEngine: ObservableObject {
         inputs: [WindowInput],
         warning: Int,
         critical: Int
-    ) -> [Provider: Severity] {
-        var out: [Provider: Severity] = [:]
+    ) -> [AlertEngine.Provider: AlertEngine.Severity] {
+        var out: [AlertEngine.Provider: AlertEngine.Severity] = [:]
         for input in inputs {
             guard input.visible else { continue }
             // Treat error-only states (no value, error set) as "no signal".
-            if input.window.error != nil && input.window.usedPercent == 0 {
-                continue
-            }
+            if !input.window.hasPercentageReading { continue }
             let pct = input.window.percentInt
             if pct >= critical {
-                out[input.provider] = .critical
+                out[input.provider] = max(out[input.provider] ?? .none, .critical)
             } else if pct >= warning {
-                out[input.provider] = .warning
+                out[input.provider] = max(out[input.provider] ?? .none, .warning)
             }
         }
         return out
     }
 
     struct CrossingsEvalResult {
-        let next: Set<CrossingKey>
+        let next: Set<AlertEngine.CrossingKey>
         /// Non-nil when at least one new crossing was recorded AND we're
         /// past warmup. `nil` during warmup or when nothing crossed.
-        let pulse: PulseEvent?
+        let pulse: AlertEngine.PulseEvent?
     }
 
     /// Pure-function crossing evaluator.
@@ -245,7 +263,7 @@ final class AlertEngine: ObservableObject {
     ///   tick, possibly covering multiple providers/thresholds), unless we
     ///   haven't completed warmup yet.
     static func evaluateCrossings(
-        previous: Set<CrossingKey>,
+        previous: Set<AlertEngine.CrossingKey>,
         inputs: [WindowInput],
         warning: Int,
         critical: Int,
@@ -253,38 +271,53 @@ final class AlertEngine: ObservableObject {
     ) -> CrossingsEvalResult {
         var next = previous
 
-        // Prune keys whose resetAt is stale relative to the current window.
-        // A `nil` resetAt means we have no current boundary; in that case
-        // we can't evaluate crossings for that provider, so leave its keys
-        // alone (they'll get pruned once a real resetAt arrives).
         for input in inputs {
-            guard let currentReset = input.window.resetAt else { continue }
-            next = next.filter { key in
-                key.provider != input.provider || key.resetAt == currentReset
+            if let currentReset = input.window.resetAt {
+                next = Set(next.compactMap { key in
+                    guard key.provider == input.provider, key.windowKind == input.windowKind else { return key }
+                    if input.windowKind == .monthly, key.resetAt == nil {
+                        let bound = key.threshold == .warning ? warning : critical
+                        guard input.window.hasPercentageReading, input.window.percentInt >= bound else { return nil }
+                        return AlertEngine.CrossingKey(provider: key.provider, threshold: key.threshold,
+                                                       resetAt: currentReset, windowKind: key.windowKind)
+                    }
+                    return key.resetAt == currentReset ? key : nil
+                })
+            } else if input.windowKind == .monthly, input.window.hasPercentageReading {
+                // Without a provider boundary, rearm only after an observed
+                // reading falls below the threshold. Failed polls cannot rearm.
+                next = next.filter { key in
+                    if key.provider != input.provider || key.windowKind != input.windowKind { return true }
+                    let bound = key.threshold == .warning ? warning : critical
+                    return input.window.percentInt >= bound
+                }
             }
         }
 
-        var newCrossings: [CrossingKey] = []
-        var pulseLines: [PulseLine] = []
-        var maxSeverity: Severity = .none
+        var newCrossings: [AlertEngine.CrossingKey] = []
+        var pulseLines: [AlertEngine.PulseLine] = []
+        var maxSeverity: AlertEngine.Severity = .none
 
         for input in inputs {
             guard input.visible else { continue }
-            guard let resetAt = input.window.resetAt else { continue }
-            if input.window.error != nil && input.window.usedPercent == 0 {
-                continue
-            }
+            let resetAt = input.window.resetAt
+            guard resetAt != nil || input.windowKind == .monthly else { continue }
+            if !input.window.hasPercentageReading { continue }
             let pct = input.window.percentInt
 
-            for threshold in [Threshold.warning, Threshold.critical] {
+            for threshold in [AlertEngine.Threshold.warning, AlertEngine.Threshold.critical] {
                 let bound = (threshold == .warning) ? warning : critical
                 guard pct >= bound else { continue }
-                let key = CrossingKey(
+                let key = AlertEngine.CrossingKey(
                     provider: input.provider,
                     threshold: threshold,
-                    resetAt: resetAt
+                    resetAt: resetAt,
+                    windowKind: input.windowKind
                 )
-                if !next.contains(key) {
+                let alreadyCrossed = resetAt == nil
+                    ? next.contains { $0.provider == input.provider && $0.windowKind == input.windowKind && $0.threshold == threshold }
+                    : next.contains(key)
+                if !alreadyCrossed {
                     next.insert(key)
                     newCrossings.append(key)
                 }
@@ -293,13 +326,13 @@ final class AlertEngine: ObservableObject {
             // Build pulse line per provider that crossed any threshold this
             // tick — coalesces both providers into a single event when both
             // happen on the same usage update.
-            if newCrossings.contains(where: { $0.provider == input.provider }) {
-                let sev: Severity = pct >= critical
+            if newCrossings.contains(where: { $0.provider == input.provider && $0.windowKind == input.windowKind }) {
+                let sev: AlertEngine.Severity = pct >= critical
                     ? .critical
                     : (pct >= warning ? .warning : .none)
                 if sev != .none {
                     maxSeverity = max(maxSeverity, sev)
-                    pulseLines.append(PulseLine(
+                    pulseLines.append(AlertEngine.PulseLine(
                         provider: input.provider,
                         percent: pct,
                         resetAt: resetAt
@@ -308,11 +341,10 @@ final class AlertEngine: ObservableObject {
             }
         }
 
-        let pulse: PulseEvent? = {
+        let pulse: AlertEngine.PulseEvent? = {
             guard warmedUp, !pulseLines.isEmpty else { return nil }
-            return PulseEvent(severity: maxSeverity, lines: pulseLines)
+            return AlertEngine.PulseEvent(severity: maxSeverity, lines: pulseLines)
         }()
         return CrossingsEvalResult(next: next, pulse: pulse)
     }
 }
-

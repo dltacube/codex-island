@@ -14,14 +14,19 @@ struct SettingsView: View {
     @ObservedObject private var refreshStore = RefreshIntervalStore.shared
     @ObservedObject private var tokenMode = TokenCountModeStore.shared
     @ObservedObject private var lowPower = LowPowerModeStore.shared
+    @ObservedObject private var alwaysShow = AlwaysShowUsageStore.shared
     @ObservedObject private var alertPrefs = AlertThresholdStore.shared
     @ObservedObject private var spacing = IslandSpacingStore.shared
+    @ObservedObject private var usageDisplay = UsageDisplayModeStore.shared
     @ObservedObject private var targetDisplay = IslandTargetDisplayStore.shared
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
     @ObservedObject private var usage = UsageStore.shared
     @ObservedObject private var cost = CostStore.shared
+    @ObservedObject private var currencyStore = CurrencyStore.shared
     @ObservedObject private var updater = UpdaterController.shared
 
     @AppStorage("Settings.activeTab") private var activeTabRaw: String = SettingsTab.general.rawValue
+    @State private var recoveryPresented = false
 
     private var activeTab: SettingsTab {
         get { SettingsTab(rawValue: activeTabRaw) ?? .general }
@@ -63,9 +68,15 @@ struct SettingsView: View {
 
             SettingsFooter()
         }
-        .frame(minWidth: 440, minHeight: 420)
+        .frame(minWidth: 440, minHeight: 560)
         .background(Color(red: 0.020, green: 0.020, blue: 0.027))
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $recoveryPresented) {
+            ClaudeRecoveryView(model: ClaudeRecoveryModel(onSaved: {
+                CostStore.shared.refresh()
+                NotificationCenter.default.post(name: .codexIslandUsageHistoryRecovered, object: nil)
+            }))
+        }
     }
 
     // MARK: - Tabs
@@ -99,7 +110,7 @@ struct SettingsView: View {
         Button {
             activeTab = tab
         } label: {
-            Text(tab.label)
+            Text(L10n.tr(tab.label))
                 .font(Typography.tabLabel)
                 .foregroundStyle(isOn
                     ? .white.opacity(0.95)
@@ -115,9 +126,9 @@ struct SettingsView: View {
                         }
                 }
         }
-        .buttonStyle(.plain)
-        .animation(.easeOut(duration: 0.12), value: isOn)
-        .accessibilityLabel("\(tab.label) tab")
+        .buttonStyle(PressableButtonStyle(scale: 0.97))
+        .animation(.hoverFade, value: isOn)
+        .accessibilityLabel(L10n.tr("%@ tab", L10n.tr(tab.label)))
         .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
     }
 
@@ -126,6 +137,23 @@ struct SettingsView: View {
     private var generalTab: some View {
         VStack(alignment: .leading, spacing: 0) {
             generalSection
+            SettingsRow(title: "Usage card", subtitle: "Your time with AI, ready to share.") {
+                Button(L10n.tr("Create card…")) { WeeklyCardWindowController.shared.show() }
+                    .controlSize(.small)
+            }
+            .padding(.horizontal, 14)
+            SettingsRow(title: "Usage history", subtitle: "Find older Claude counts.") {
+                HStack(spacing: 8) {
+                    RecoveryHelp(
+                        title: "Why recover usage?",
+                        explanation: "Older usage can be missing when Claude logs have been deleted or moved. Recovery checks the records still on your Mac and any backups you add. It saves only missing counts, so scanning again won't duplicate your usage."
+                    )
+                    Button(L10n.tr("Recover Claude usage…")) { recoveryPresented = true }
+                        .controlSize(.small)
+                        .disabled(AppEnvironment.isDemo)
+                }
+            }
+            .padding(.horizontal, 14)
             alertsSection
             updatesSection
         }
@@ -133,6 +161,7 @@ struct SettingsView: View {
 
     private var displayTab: some View {
         VStack(alignment: .leading, spacing: 0) {
+            usageDisplaySection
             chartSection
             costStyleSection
             targetDisplaySection
@@ -171,14 +200,14 @@ struct SettingsView: View {
     @ViewBuilder
     private func sectionLabel(_ text: String, hint: String? = nil) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(text)
+            Text(L10n.tr(text))
                 .font(Typography.sectionLabel)
                 .tracking(1.05)
                 .textCase(.uppercase)
                 .foregroundStyle(.white.opacity(0.34))
             Spacer(minLength: 8)
             if let hint {
-                Text(hint)
+                Text(L10n.tr(hint))
                     .font(Typography.micro)
                     .foregroundStyle(.white.opacity(0.18))
             }
@@ -203,6 +232,20 @@ struct SettingsView: View {
                 subtitle: "How often to refresh."
             ) {
                 refreshSegmented
+            }
+            SettingsRow(
+                title: "Language",
+                subtitle: appLanguage.language.subtitle
+            ) {
+                languagePicker
+            }
+            SettingsRow(
+                title: "Always show usage",
+                subtitle: "Keep the percentage and time remaining visible without hovering."
+            ) {
+                SettingsToggle(isOn: alwaysShow.enabled) {
+                    alwaysShow.enabled.toggle()
+                }
             }
             SettingsRow(
                 title: "Low Power Mode",
@@ -276,7 +319,7 @@ struct SettingsView: View {
     @ViewBuilder
     private func previewButton(_ label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(label)
+            Text(L10n.tr(label))
                 .font(Typography.bodyNumber)
                 .foregroundStyle(.white.opacity(0.85))
                 .lineLimit(1)
@@ -350,7 +393,7 @@ struct SettingsView: View {
                 .frame(width: 7, height: 7)
                 .shadow(color: color.opacity(0.7), radius: 4)
                 .accessibilityHidden(true)
-            Text(label)
+            Text(L10n.tr(label))
                 .font(Typography.rowTitle)
                 .tracking(-0.07)
                 .foregroundStyle(.white.opacity(0.92))
@@ -436,37 +479,42 @@ struct SettingsView: View {
         .padding(.bottom, 6)
     }
 
-    private var providersSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            sectionLabel("Providers")
-            SettingsRow(
-                title: "Claude",
-                subtitle: providerSubtitle(usage.claude),
-                dot: IslandColor.claude,
-                chip: usage.claude.plan?.uppercased()
-            ) {
-                SettingsToggle(isOn: visibility.claudeVisible) {
-                    withAnimation(.openMorph) {
-                        visibility.claudeVisible.toggle()
-                    }
-                }
-            }
-            SettingsRow(
-                title: "Codex",
-                subtitle: providerSubtitle(usage.codex),
-                dot: IslandColor.codex,
-                chip: usage.codex.plan?.uppercased()
-            ) {
-                SettingsToggle(isOn: visibility.codexVisible) {
-                    withAnimation(.openMorph) {
-                        visibility.codexVisible.toggle()
-                    }
-                }
+    private var languagePicker: some View {
+        Picker("", selection: languageSelection) {
+            ForEach(AppLanguage.allCases, id: \.self) { language in
+                Text(language.menuLabel).tag(language)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 18)
-        .padding(.bottom, 6)
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .fixedSize()
+        .accessibilityLabel(L10n.tr("Language"))
+    }
+
+    private var languageSelection: Binding<AppLanguage> {
+        Binding(
+            get: { appLanguage.language },
+            set: { newLanguage in
+                if appLanguage.select(newLanguage) {
+                    showLanguageRestartPrompt()
+                }
+            }
+        )
+    }
+
+    private func showLanguageRestartPrompt() {
+        let alert = NSAlert()
+        alert.messageText = L10n.tr("Restart CodexIsland to apply language?")
+        alert.informativeText = L10n.tr("Your language change will take effect after CodexIsland restarts.")
+        alert.addButton(withTitle: L10n.tr("Restart now"))
+        alert.addButton(withTitle: L10n.tr("Later"))
+        if alert.runModal() == .alertFirstButtonReturn {
+            appLanguage.restartApp()
+        }
+    }
+
+    private var providersSection: some View {
+        ProviderSelectionView()
     }
 
     /// Lets the user pick which token total drives the TOKENS hero on the
@@ -493,9 +541,9 @@ struct SettingsView: View {
     private var tokenModeSubtitle: String {
         switch tokenMode.mode {
         case .all:
-            return "Counts everything — input, output, and cache. Mirrors ccusage."
+            return L10n.tr("Counts everything — input, output, and cache. Mirrors ccusage.")
         case .billable:
-            return "Input + output only. Matches Anthropic's claude.ai stats."
+            return L10n.tr("Input + output only. Matches Anthropic's claude.ai stats.")
         }
     }
 
@@ -508,61 +556,85 @@ struct SettingsView: View {
         )
     }
 
-    /// Single-row Cost section. Re-uses the section-label typography on the
-    /// left and inlines the freshness caption + refresh button on the right
-    /// — compact so it sits cleanly under the Providers list.
+    /// Compact Cost section with the rate attribution kept under the
+    /// freshness caption, so the currency picker remains usable in the
+    /// settings window's narrowest supported width.
     private var costSection: some View {
         HStack(alignment: .center, spacing: 10) {
-            Text("Cost")
+            Text(L10n.tr("Cost"))
                 .font(Typography.sectionLabel)
                 .tracking(1.05)
                 .textCase(.uppercase)
                 .foregroundStyle(.white.opacity(0.34))
 
-            Text(costSubtitle())
-                .font(Typography.label)
-                .foregroundStyle(.white.opacity(0.42))
-                .lineLimit(1)
-                .truncationMode(.tail)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(costSubtitle())
+                    .font(Typography.label)
+                    .foregroundStyle(.white.opacity(0.42))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                if let attributionURL = URL(string: "https://www.exchangerate-api.com") {
+                    Link(
+                        L10n.tr("Rates by ExchangeRate-API"),
+                        destination: attributionURL
+                    )
+                    .font(Typography.micro)
+                    .foregroundStyle(.white.opacity(0.34))
+                }
+            }
 
             Spacer(minLength: 8)
+
+            Picker("", selection: $currencyStore.currency) {
+                ForEach(DisplayCurrency.allCases) { currency in
+                    Text(currency.menuLabel).tag(currency)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .fixedSize()
+            .accessibilityLabel(L10n.tr("Display currency"))
 
             PillButton(
                 label: cost.loading ? "Refreshing…" : "Refresh",
                 isLoading: cost.loading
-            ) { cost.refresh() }
+            ) {
+                cost.refresh()
+                currencyStore.refresh()
+            }
         }
         .padding(.horizontal, 24)
         .padding(.top, 14)
         .padding(.bottom, 14)
     }
 
-    /// Days past the embedded pricing snapshot before the Cost section
-    /// admits the data may be stale. Anthropic re-tiered Opus once already,
-    /// so two months without a refresh is the point where dollar totals
-    /// could meaningfully drift from reality.
-    private static let pricingFreshnessThreshold = 60
-
     private static let relativeFormatter: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
+        f.locale = L10n.locale
         f.unitsStyle = .abbreviated
         return f
     }()
 
     private func costSubtitle() -> String {
-        let base: String
+        if currencyStore.refreshing {
+            return L10n.tr("updating exchange rate…")
+        }
         if cost.loading {
-            base = "scanning local logs…"
-        } else if let updated = cost.lastUpdated {
-            base = "last scan \(Self.relativeFormatter.localizedString(for: updated, relativeTo: Date()))"
-        } else {
-            base = "swipe panel to view"
+            return L10n.tr("scanning local logs…")
         }
-        let days = Pricing.daysSinceSnapshot
-        if days > Self.pricingFreshnessThreshold {
-            return base + " · pricing data \(days)d old"
+        if let updated = cost.lastUpdated {
+            let relative = Self.relativeFormatter.localizedString(for: updated, relativeTo: Date())
+            if currencyStore.displayCurrency == .usd {
+                return L10n.tr("last scan %@", relative)
+            }
+            return L10n.tr(
+                "last scan %@ · estimated %@",
+                relative,
+                currencyStore.displayCurrency.rawValue
+            )
         }
-        return base
+        return L10n.tr("swipe panel to view")
     }
 
     private var chartSection: some View {
@@ -571,6 +643,21 @@ struct SettingsView: View {
             ChartStylePicker(selected: $stylePref.style)
                 .padding(.top, 4)
                 .padding(.horizontal, 10)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 18)
+        .padding(.bottom, 14)
+    }
+
+    private var usageDisplaySection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("Usage display")
+            SettingsRow(
+                title: "Percentages",
+                subtitle: "Show usage as used or remaining quota."
+            ) {
+                usageDisplaySegmented
+            }
         }
         .padding(.horizontal, 14)
         .padding(.top, 18)
@@ -615,6 +702,15 @@ struct SettingsView: View {
         )
     }
 
+    private var usageDisplaySegmented: some View {
+        SegmentedControl(
+            items: UsageDisplayMode.allCases,
+            selected: $usageDisplay.mode,
+            label: \.label,
+            accessibilityPrefix: "Usage display"
+        )
+    }
+
     private var targetDisplaySection: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionLabel("Target Display")
@@ -637,11 +733,11 @@ struct SettingsView: View {
         switch targetDisplay.choice {
         case .auto:
             if let resolved = DisplayInfo.currentTarget() {
-                return "Auto — currently on \(resolved.name)."
+                return L10n.tr("Auto — currently on %@.", resolved.name)
             }
-            return "Auto — picks a notched display when available."
+            return L10n.tr("Auto — picks a notched display when available.")
         case .stable:
-            return "Pinned to a specific display. Falls back to Auto if unplugged."
+            return L10n.tr("Pinned to a specific display. Falls back to Auto if unplugged.")
         }
     }
 
@@ -649,16 +745,16 @@ struct SettingsView: View {
         let displays = DisplayInfo.all()
         let autoTag = IslandTargetDisplayStore.Choice.auto.rawValue
         return Picker("", selection: pickerSelection) {
-            Text("Auto").tag(autoTag)
+            Text(L10n.tr("Auto")).tag(autoTag)
             ForEach(displays, id: \.stableID) { d in
-                Text(d.isBuiltin ? "\(d.name) (built-in)" : d.name)
+                Text(d.isBuiltin ? L10n.tr("%@ (built-in)", d.name) : d.name)
                     .tag(d.stableID)
             }
         }
         .labelsHidden()
         .pickerStyle(.menu)
         .frame(maxWidth: 220)
-        .accessibilityLabel("Target display")
+        .accessibilityLabel(L10n.tr("Target display"))
     }
 
     /// Bridges the enum `Choice` to a `String` selection that SwiftUI's
@@ -696,15 +792,18 @@ struct SettingsView: View {
 
     private func providerSubtitle(_ u: AppUsage) -> String {
         let synced: String = {
-            guard let updated = usage.lastUpdated else { return "idle" }
-            return "synced \(Self.relativeFormatter.localizedString(for: updated, relativeTo: Date()))"
+            guard let updated = usage.lastUpdated else { return L10n.tr("idle") }
+            return L10n.tr("synced %@", Self.relativeFormatter.localizedString(for: updated, relativeTo: Date()))
         }()
-        let nums = "\(Self.windowCaption(u.fiveHour)) / \(Self.windowCaption(u.weekly))"
+        let nums = "\(windowCaption(u.fiveHour)) / \(windowCaption(u.weekly))"
         return "\(synced) · \(nums)"
     }
 
-    private static func windowCaption(_ w: WindowUsage) -> String {
+    private func windowCaption(_ w: WindowUsage) -> String {
+        // The parse-omission sentinel is a plan shape, not a fault — no
+        // warning glyph for a window the provider doesn't offer.
+        if w.isUnreported { return "—" }
         if let err = w.error, w.percentInt == 0 { return "⚠ \(err)" }
-        return "\(w.percentInt)%"
+        return "\(w.displayedPercentInt(mode: usageDisplay.mode))%"
     }
 }

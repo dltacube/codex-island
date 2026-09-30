@@ -1,15 +1,17 @@
 import SwiftUI
 
 enum ChartStyle: String, CaseIterable {
-    case ring, bar, stepped, numeric, spark
+    case rails, ring, capacity, telemetry, stepped
+
+    static let legacyStyles: [String: ChartStyle] = ["bar": .rails, "spark": .telemetry]
 
     var label: String {
         switch self {
-        case .ring: "Ring"
-        case .bar: "Bar"
-        case .stepped: "Stepped"
-        case .numeric: "Numeric"
-        case .spark: "Sparkline"
+        case .rails: L10n.tr("Rails")
+        case .ring: L10n.tr("Ring")
+        case .capacity: L10n.tr("Grid")
+        case .telemetry: L10n.tr("History")
+        case .stepped: L10n.tr("Stepped")
         }
     }
 }
@@ -22,7 +24,8 @@ final class StylePref: StylePreferenceStore<ChartStyle> {
         super.init(
             styleKey: "MacIsland.chartStyle",
             cycledKey: "MacIsland.hasCycledStyle",
-            defaultStyle: .ring
+            defaultStyle: .ring,
+            legacyStyles: ChartStyle.legacyStyles
         )
     }
 }

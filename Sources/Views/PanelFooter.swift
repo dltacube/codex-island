@@ -7,17 +7,22 @@ import AppKit
 ///
 /// Two things change with the active screen:
 ///   1. The chip — shows the current chart-style label on the usage page
-///      (since cmd-click cycles styles there) and a static "USD" on the
-///      cost page (cost bars don't cycle).
+///      (since cmd-click cycles styles there), the current cost mode on
+///      the cost page, and a static year label on the overview page.
 ///   2. The live-status group — reflects whichever store powers the
-///      currently visible page (UsageStore on usage, CostStore on cost),
-///      so "syncing…" / "synced 5s ago" describes the data the user sees.
+///      currently visible page (UsageStore on usage, CostStore on cost
+///      and overview), so "syncing…" / "synced 5s ago" describes the
+///      data the user sees.
 struct PanelFooter: View {
+    @ObservedObject var model: IslandModel
     @ObservedObject private var pref = StylePref.shared
     @ObservedObject private var costPref = CostStylePref.shared
     @ObservedObject private var screenPref = ScreenPref.shared
+    @ObservedObject private var visibility = ProviderVisibilityStore.shared
+    @ObservedObject private var connections = ProviderConnectionStore.shared
     @ObservedObject private var usageStore = UsageStore.shared
     @ObservedObject private var costStore = CostStore.shared
+    @ObservedObject private var currencyStore = CurrencyStore.shared
     @State private var liveStatusHovered = false
 
     var body: some View {
@@ -27,23 +32,29 @@ struct PanelFooter: View {
                 startPoint: .leading, endPoint: .trailing
             )
             .frame(height: 1)
-            .padding(.horizontal, 22)
+            .padding(.horizontal, IslandPanelLayout.horizontalInset)
+            .opacity(screenPref.screen == .overview ? 0 : 1)
 
-            ZStack {
+            ZStack(alignment: .center) {
                 HStack(spacing: 10) {
+                    SettingsButton()
                     chip
+
+                    if screenPref.screen == .overview {
+                        WeeklyCardButton()
+                    }
 
                     if !activeStyleCycled {
                         HStack(spacing: 5) {
                             Image(systemName: "command")
                                 .font(Typography.micro)
-                            Text("click to cycle")
+                            Text(L10n.tr("click to cycle"))
                                 .font(Typography.label)
                         }
                         .foregroundStyle(.white.opacity(0.42))
                         .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .leading)))
                         .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Tip: Command-click to cycle visualization")
+                        .accessibilityLabel(cycleHintAccessibilityLabel)
                     }
 
                     Spacer()
@@ -55,11 +66,10 @@ struct PanelFooter: View {
                 // wide the chip + tip on the left or the live-status on
                 // the right grow. Independent of those widths so the dots
                 // sit at true bottom-center of the panel.
-                PageIndicator()
+                PageIndicator(model: model)
             }
-            .padding(.horizontal, 22)
-            .padding(.top, 6)
-            .padding(.bottom, 10)
+            .frame(height: IslandPanelLayout.footerHeight - 1, alignment: .center)
+            .padding(.horizontal, IslandPanelLayout.horizontalInset)
             .animation(.strongEaseOut, value: pref.hasCycledStyle)
             .animation(.strongEaseOut, value: costPref.hasCycledStyle)
             .animation(.strongEaseOut, value: screenPref.screen)
@@ -70,6 +80,14 @@ struct PanelFooter: View {
         switch screenPref.screen {
         case .usage: return pref.hasCycledStyle
         case .cost:  return costPref.hasCycledStyle
+        case .overview: return true
+        }
+    }
+
+    private var cycleHintAccessibilityLabel: String {
+        switch screenPref.screen {
+        case .overview: return L10n.tr("Overview shows %@ usage history", currentYearString)
+        case .usage, .cost: return L10n.tr("Tip: Command-click to cycle visualization")
         }
     }
 
@@ -78,7 +96,11 @@ struct PanelFooter: View {
         let label: String = {
             switch screenPref.screen {
             case .usage: return pref.style.label.uppercased()
-            case .cost:  return costPref.style.label
+            case .cost:
+                return costPref.style == .dollar
+                    ? currencyStore.displayCurrency.rawValue
+                    : costPref.style.label
+            case .overview: return currentYearString
             }
         }()
         Text(label)
@@ -98,20 +120,38 @@ struct PanelFooter: View {
             .contentTransition(.opacity)
             .animation(.strongEaseOut, value: pref.style)
             .animation(.strongEaseOut, value: costPref.style)
+            .animation(.strongEaseOut, value: currencyStore.displayCurrency)
             .animation(.strongEaseOut, value: screenPref.screen)
     }
 
     private var activeLoading: Bool {
         switch screenPref.screen {
-        case .usage: return usageStore.loading
-        case .cost:  return costStore.loading
+        case .usage: return usageStore.loading || visibility.selected.contains { connections.loading.contains($0) }
+        case .cost, .overview: return visibility.selected.contains { costStore.isLoading($0) }
         }
     }
 
     private var activeLastUpdated: Date? {
         switch screenPref.screen {
-        case .usage: return usageStore.lastUpdated
-        case .cost:  return costStore.lastUpdated
+        case .usage:
+            let dates = visibility.selected.compactMap { provider in
+                provider.usesLegacyUsage ? usageStore.lastUpdated : connections.snapshot(provider).updatedAt
+            }
+            return dates.count == visibility.selected.count ? dates.min() : nil
+        case .cost, .overview:
+            let dates = visibility.selected.compactMap { costStore.updatedAt($0) }
+            return dates.count == visibility.selected.count ? dates.min() : nil
+        }
+    }
+
+    private var localNotice: String? {
+        guard screenPref.screen != .usage else { return nil }
+        return visibility.selected.compactMap { costStore.localNotices[$0] }.first
+    }
+
+    private var connectionNeedsAttention: Bool {
+        screenPref.screen == .usage && visibility.selected.contains {
+            !$0.usesLegacyUsage && connections.snapshot($0).updatedAt == nil
         }
     }
 
@@ -122,20 +162,26 @@ struct PanelFooter: View {
         // each store's refresh() prevent click-spam from stacking fetches.
         Button(action: triggerRefresh) {
             HStack(spacing: 6) {
-                LiveDot(active: activeLastUpdated != nil && !activeLoading)
+                LiveDot(active: activeLastUpdated != nil && !activeLoading && localNotice == nil)
                 if activeLoading {
-                    Text("syncing…")
+                    Text(L10n.tr("Syncing…"))
                         .font(Typography.label)
                         .foregroundStyle(.white.opacity(0.55))
+                } else if localNotice != nil {
+                    Text(AppEnvironment.isDemo ? "Demo data" : "Check local records")
+                        .font(Typography.label).foregroundStyle(.white.opacity(0.55))
+                } else if connectionNeedsAttention {
+                    Text(L10n.tr("Check connection"))
+                        .font(Typography.label).foregroundStyle(.white.opacity(0.55))
                 } else if let updated = activeLastUpdated {
-                    Text("synced")
+                    Text(L10n.tr("Synced"))
                         .font(Typography.label)
                         .foregroundStyle(.white.opacity(liveStatusHovered ? 0.85 : 0.55))
                     Text(relative(updated))
                         .font(Typography.bodyNumber)
                         .foregroundStyle(.white.opacity(liveStatusHovered ? 0.95 : 0.72))
                 } else {
-                    Text("idle")
+                    Text(L10n.tr("Idle"))
                         .font(Typography.label)
                         .foregroundStyle(.white.opacity(liveStatusHovered ? 0.7 : 0.4))
                 }
@@ -148,7 +194,7 @@ struct PanelFooter: View {
             )
             .contentShape(RoundedRectangle(cornerRadius: 5))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle(scale: 0.97))
         .disabled(activeLoading)
         .onHover { h in
             liveStatusHovered = h
@@ -158,35 +204,47 @@ struct PanelFooter: View {
                 NSCursor.pop()
             }
         }
-        .help("Refresh now")
-        .animation(.easeOut(duration: 0.12), value: liveStatusHovered)
-        .animation(.easeOut(duration: 0.12), value: activeLoading)
+        .help(localNotice ?? L10n.tr("Refresh now"))
+        .animation(.hoverFade, value: liveStatusHovered)
+        .animation(.hoverFade, value: activeLoading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(liveStatusSpoken)
-        .accessibilityHint("Click to refresh now")
+        .accessibilityHint(L10n.tr("Click to refresh now"))
         .accessibilityAddTraits(.isButton)
     }
 
     private func triggerRefresh() {
         switch screenPref.screen {
-        case .usage: usageStore.refresh()
-        case .cost:  costStore.refresh()
+        case .usage:
+            for provider in visibility.selected where !provider.usesLegacyUsage {
+                connections.refresh(provider, manually: true)
+            }
+            usageStore.refresh()
+        case .cost, .overview: costStore.refresh()
         }
     }
 
     private var liveStatusSpoken: String {
-        if activeLoading { return "Syncing" }
-        if let updated = activeLastUpdated { return "Synced \(relative(updated))" }
-        return "Idle"
+        if activeLoading { return L10n.tr("Syncing") }
+        if let localNotice { return localNotice }
+        if connectionNeedsAttention { return L10n.tr("Check connection") }
+        if let updated = activeLastUpdated { return L10n.tr("Synced %@", relative(updated)) }
+        return L10n.tr("Idle")
     }
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
+        f.locale = L10n.locale
         f.unitsStyle = .abbreviated
         return f
     }()
 
     private func relative(_ d: Date) -> String {
         Self.relativeFormatter.localizedString(for: d, relativeTo: Date())
+    }
+
+    private var currentYearString: String {
+        let year = Calendar.current.component(.year, from: Date())
+        return "\(year)"
     }
 }

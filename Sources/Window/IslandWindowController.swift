@@ -12,10 +12,14 @@ final class IslandWindowController {
     private var trackingTimer: Timer?
     private var screenChangeObserver: NSObjectProtocol?
     private var occlusionObserver: NSObjectProtocol?
+    private var sessionResignObserver: NSObjectProtocol?
+    private var sessionActiveObserver: NSObjectProtocol?
     private var subs: Set<AnyCancellable> = []
     private var hasSeenMouseEvent = false
+    private var isMouseInsideIsland = false
+    private var cmdQMonitor: Any?
 
-    static let windowSize = CGSize(width: 900, height: 280)
+    static let windowSize = CGSize(width: 900, height: 360)
 
     init() {
         let notch = NotchInfo.detect(from: Self.targetScreen())
@@ -50,6 +54,7 @@ final class IslandWindowController {
         observeScreenChanges()
         observeTargetChoice()
         observeOcclusion()
+        observeSessionState()
     }
 
     deinit {
@@ -59,8 +64,15 @@ final class IslandWindowController {
         if let observer = occlusionObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        if let observer = sessionResignObserver {
+            DistributedNotificationCenter.default().removeObserver(observer)
+        }
+        if let observer = sessionActiveObserver {
+            DistributedNotificationCenter.default().removeObserver(observer)
+        }
         if let m = globalMouseMonitor { NSEvent.removeMonitor(m) }
         if let m = localMouseMonitor { NSEvent.removeMonitor(m) }
+        if let m = cmdQMonitor { NSEvent.removeMonitor(m) }
         trackingTimer?.invalidate()
     }
 
@@ -119,6 +131,53 @@ final class IslandWindowController {
         if window.ignoresMouseEvents == inside {
             window.ignoresMouseEvents = !inside
         }
+        if inside != isMouseInsideIsland {
+            isMouseInsideIsland = inside
+            if inside {
+                NSApp.activate(ignoringOtherApps: true)
+                window.makeKey()
+                cmdQMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                    self?.handleKeyDown(event) ?? event
+                }
+            } else {
+                if let m = cmdQMonitor { NSEvent.removeMonitor(m) }
+                cmdQMonitor = nil
+            }
+        }
+    }
+
+    private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
+        guard window.isKeyWindow else { return event }
+
+        let modifiers = event.modifierFlags
+            .intersection(.deviceIndependentFlagsMask)
+            .subtracting([.capsLock])
+        if modifiers == .command, event.charactersIgnoringModifiers == "q" {
+            NSApp.terminate(nil)
+            return nil
+        }
+
+        guard model.state == .expanded else { return event }
+
+        if modifiers == .command,
+           let character = event.charactersIgnoringModifiers,
+           let index = ["1", "2", "3"].firstIndex(of: character) {
+            model.showScreen(ScreenPref.Screen.allCases[index])
+            return nil
+        }
+
+        let navigationModifiers = modifiers.subtracting([.function, .numericPad, .capsLock])
+        guard navigationModifiers.isEmpty else { return event }
+        switch event.keyCode {
+        case 123:
+            model.rewindScreen()
+            return nil
+        case 124:
+            model.advanceScreen()
+            return nil
+        default:
+            return event
+        }
     }
 
     @MainActor
@@ -156,6 +215,42 @@ final class IslandWindowController {
             Task { @MainActor in
                 WindowOcclusionStore.shared.update(isVisible: visible)
             }
+        }
+    }
+
+    /// Hides the island when the screen locks so it doesn't ride the
+    /// lock-screen slide animation (which makes the notch appear to fall).
+    /// DistributedNotificationCenter "com.apple.screenIsLocked" fires as soon
+    /// as the lock is initiated, before the slide animation completes.
+    private func observeSessionState() {
+        let dc = DistributedNotificationCenter.default()
+        sessionResignObserver = dc.addObserver(
+            forName: NSNotification.Name("com.apple.screenIsLocked"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.fadeOut() }
+        }
+        sessionActiveObserver = dc.addObserver(
+            forName: NSNotification.Name("com.apple.screenIsUnlocked"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.fadeIn() }
+        }
+    }
+
+    private func fadeOut() {
+        window.orderOut(nil)
+    }
+
+    private func fadeIn() {
+        window.alphaValue = 0
+        window.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.4
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            window.animator().alphaValue = 1
         }
     }
 

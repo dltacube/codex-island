@@ -62,6 +62,11 @@ final class IslandHostingView: NSHostingView<IslandRootView> {
             return
         }
 
+        if shouldDeferScrollToNestedScrollView(event) {
+            super.scrollWheel(with: event)
+            return
+        }
+
         // Shift+scroll fallback (works on trackpad and regular mouse).
         // We react per-event instead of accumulating across phases:
         // wheel ticks have no `.began`/`.ended` phase at all, and for
@@ -75,9 +80,9 @@ final class IslandHostingView: NSHostingView<IslandRootView> {
                 : event.scrollingDeltaY
             guard abs(delta) > 0.5 else { return }
             if delta < 0 {
-                ScreenPref.shared.advance()
+                islandModel.advanceScreen()
             } else {
-                ScreenPref.shared.rewind()
+                islandModel.rewindScreen()
             }
             return
         }
@@ -108,9 +113,22 @@ final class IslandHostingView: NSHostingView<IslandRootView> {
         // deltaX → advance to next page (cost screen sits "to the right" of
         // the usage screen, like an iOS Home Screen page 2).
         if swipeAccumX < 0 {
-            ScreenPref.shared.advance()
+            islandModel.advanceScreen()
         } else {
-            ScreenPref.shared.rewind()
+            islandModel.rewindScreen()
         }
+    }
+
+    private func shouldDeferScrollToNestedScrollView(_ event: NSEvent) -> Bool {
+        let point = convert(event.locationInWindow, from: nil)
+        guard let target = super.hitTest(point) else { return false }
+
+        var view: NSView? = target
+        while let current = view {
+            if current is NSScrollView { return true }
+            view = current.superview
+        }
+
+        return false
     }
 }

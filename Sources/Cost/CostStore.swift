@@ -3,7 +3,8 @@ import Combine
 
 /// Singleton equivalent of `UsageStore` for the cost screen. Reads local
 /// session logs (Claude Code + Codex CLI), aggregates today + month-to-date
-/// spend per provider, and publishes the result for SwiftUI consumers.
+/// spend plus overview token history per provider, and publishes the result
+/// for SwiftUI consumers.
 ///
 /// Per-provider loading flags drive parallel scans that commit independently
 /// — Codex (small) appears within ~50ms while Claude (often 20k+ events)
@@ -19,10 +20,38 @@ final class CostStore: ObservableObject {
     @Published var claudeLoading = false
     @Published var codexLoading = false
     @Published var lastUpdated: Date?
+    @Published private(set) var connectedCosts: [IslandProvider: ProviderCost] = [:]
+    @Published private(set) var connectedLoading: Set<IslandProvider> = []
+    @Published private(set) var connectedUpdated: [IslandProvider: Date] = [:]
+    @Published private(set) var localNotices: [IslandProvider: String] = [:]
+    @Published private(set) var historySaveErrors: [IslandProvider: String] = [:]
 
-    var loading: Bool { claudeLoading || codexLoading }
+    func cost(for provider: IslandProvider) -> ProviderCost {
+        switch provider {
+        case .claude: return claude
+        case .codex: return codex
+        case .grok, .antigravity:
+            return connectedCosts[provider] ?? ProviderCost(
+                today: .unavailable(label: "Today", reason: "Local usage has not been loaded"),
+                month: .unavailable(label: CostBucketing.currentMonthLabel(), reason: "Local usage has not been loaded"))
+        }
+    }
 
-    private static let cacheKey = "MacIsland.costCache.v3"
+    func isLoading(_ provider: IslandProvider) -> Bool {
+        switch provider {
+        case .claude: return claudeLoading
+        case .codex: return codexLoading
+        case .grok, .antigravity: return connectedLoading.contains(provider)
+        }
+    }
+
+    func updatedAt(_ provider: IslandProvider) -> Date? {
+        provider.usesLegacyUsage ? lastUpdated : connectedUpdated[provider]
+    }
+
+    var loading: Bool { claudeLoading || codexLoading || !connectedLoading.isEmpty }
+
+    private static let cacheKey = "MacIsland.costCache.v7"
     private static let cacheEncoder = JSONEncoder()
     private static let cacheDecoder = JSONDecoder()
     private var pollTimer: Timer?
@@ -48,35 +77,88 @@ final class CostStore: ObservableObject {
             loadDemoData()
             return
         }
+        for provider in [IslandProvider.antigravity, .grok] where !connectedLoading.contains(provider) {
+            connectedLoading.insert(provider)
+            Task.detached(priority: .utility) { [weak self] in
+                let observedAt = Date()
+                var scan = provider == .antigravity
+                    ? AntigravityLogReader.scan(lookbackDays: nil)
+                    : GrokLogReader.scan(lookbackDays: nil)
+                let saved = UsageLedger.shared.retain(scan.events,
+                                                      source: provider == .antigravity ? .antigravity : .grok,
+                                                      observedAt: observedAt)
+                scan.events = saved.events
+                let cost = CostSummary.summarize(events: scan.events, historicalDays: saved.historicalDays)
+                await self?.commitLocal(cost, scan: scan, provider: provider, saveError: saved.saveError)
+            }
+        }
+        // Only scan OpenCode when at least one provider will consume
+        // the result; avoids wasted I/O when both are already loading.
+        let openCodeTask: Task<UsageLedger.Snapshot, Never>?
+        if !claudeLoading || !codexLoading {
+            openCodeTask = Task.detached(priority: .userInitiated) {
+                let observedAt = Date()
+                return UsageLedger.shared.retain(OpenCodeLogReader.scan(lookbackDays: nil),
+                                                 source: .openCode, observedAt: observedAt)
+            }
+        } else {
+            openCodeTask = nil
+        }
         // Per-provider gate so a slow Claude scan doesn't block a fast
         // Codex one (and vice versa) on the next tick.
         if !claudeLoading {
             claudeLoading = true
             Task.detached(priority: .userInitiated) { [weak self] in
-                let events = ClaudeLogReader.scan()
-                let cost = Self.summarize(events: events)
-                await self?.commitClaude(cost)
+                let openCode = await openCodeTask?.value
+                let observedAt = Date()
+                let saved = UsageLedger.shared.retain(ClaudeLogReader.scan(lookbackDays: nil),
+                                                      source: .claude, observedAt: observedAt)
+                let events = saved.events + (openCode?.events.filter { $0.provider == .claude } ?? [])
+                let cost = CostSummary.summarize(events: events, historicalDays: saved.historicalDays)
+                await self?.commitClaude(cost, saveError: saved.saveError ?? openCode?.saveError)
             }
         }
         if !codexLoading {
             codexLoading = true
             Task.detached(priority: .userInitiated) { [weak self] in
-                let events = CodexLogReader.scan()
-                let cost = Self.summarize(events: events)
-                await self?.commitCodex(cost)
+                let openCode = await openCodeTask?.value
+                let observedAt = Date()
+                let saved = UsageLedger.shared.retain(CodexLogReader.scan(lookbackDays: nil),
+                                                      source: .codex, observedAt: observedAt)
+                let events = saved.events + (openCode?.events.filter { $0.provider == .codex } ?? [])
+                let cost = CostSummary.summarize(events: events, historicalDays: saved.historicalDays)
+                await self?.commitCodex(cost, saveError: saved.saveError ?? openCode?.saveError)
             }
         }
     }
 
-    private func commitClaude(_ cost: ProviderCost) {
+    private func commitLocal(_ cost: ProviderCost, scan: LocalCostScan, provider: IslandProvider, saveError: String?) {
+        connectedLoading.remove(provider)
+        historySaveErrors[provider] = saveError
+        localNotices[provider] = saveError ?? scan.notice
+        if scan.unreadableFiles > 0 && scan.events.isEmpty { return }
+        var displayed = cost
+        if scan.events.isEmpty {
+            displayed.today = .unavailable(label: displayed.today.label, reason: scan.notice ?? "No local usage records yet")
+            displayed.month = .unavailable(label: displayed.month.label, reason: scan.notice ?? "No local usage records yet")
+        }
+        connectedCosts[provider] = displayed
+        connectedUpdated[provider] = Date()
+    }
+
+    private func commitClaude(_ cost: ProviderCost, saveError: String?) {
         self.claude = cost
+        historySaveErrors[.claude] = saveError
+        localNotices[.claude] = saveError
         self.claudeLoading = false
         self.lastUpdated = Date()
         persist()
     }
 
-    private func commitCodex(_ cost: ProviderCost) {
+    private func commitCodex(_ cost: ProviderCost, saveError: String?) {
         self.codex = cost
+        historySaveErrors[.codex] = saveError
+        localNotices[.codex] = saveError
         self.codexLoading = false
         self.lastUpdated = Date()
         persist()
@@ -129,7 +211,12 @@ final class CostStore: ObservableObject {
                 dollars: 1510.80, tokens: 2_170_970_947, billableTokens: 217_097_094,
                 series: [4.32, 11.52, 41.47, 47.80, 67.99, 88.68, 208.14, 249.74, 327.76, 406.09, 438.15, 462.90, 477.83, 576.16, 618.03, 689.91, 710.34, 805.93, 851.29, 866.94, 866.94, 902.46, 951.91, 1010.17, 1073.80, 1128.92, 1182.69, 1219.69, 1366.31, 1510.80],
                 label: "April", error: nil, unknownModels: []
-            )
+            ),
+            dailyTokens: Self.demoDailyBuckets([
+                24, 31, 128, 44, 82, 76, 310, 122, 218, 236,
+                98, 64, 47, 286, 140, 205, 59, 276, 119, 48,
+                0, 86, 136, 154, 168, 148, 132, 94, 402, 211,
+            ], millionScale: 1_000_000, apiDollarsPerMillion: 0.696)
         )
         // Codex: evening-person pattern — flat all morning, light midday,
         // explodes 6pm-11pm. Single big surge contrasts Claude's two-peak day.
@@ -145,217 +232,53 @@ final class CostStore: ObservableObject {
                 dollars: 1342.60, tokens: 1_614_300_000, billableTokens: 322_860_000,
                 series: [12.20, 26.70, 43.50, 62.40, 83.70, 107.10, 132.80, 160.70, 190.90, 223.30, 257.90, 294.80, 333.90, 375.30, 418.90, 464.70, 512.80, 563.10, 615.70, 670.50, 727.50, 786.80, 848.30, 912.00, 978.00, 1046.20, 1116.70, 1189.40, 1264.30, 1342.60],
                 label: "April", error: nil, unknownModels: []
-            )
+            ),
+            dailyTokens: Self.demoDailyBuckets([
+                12, 18, 24, 29, 37, 42, 51, 59, 66, 74,
+                83, 90, 99, 108, 117, 124, 136, 145, 157, 166,
+                175, 188, 201, 214, 228, 239, 254, 268, 282, 164,
+            ], millionScale: 1_000_000, apiDollarsPerMillion: 0.832)
         )
+        for (provider, scale) in [(IslandProvider.grok, 0.32), (.antigravity, 0.24)] {
+            func scaled(_ window: CostWindow) -> CostWindow {
+                CostWindow(dollars: window.dollars * scale,
+                           tokens: Int(Double(window.tokens) * scale),
+                           billableTokens: Int(Double(window.billableTokens) * scale),
+                           series: window.series.map { $0 * scale },
+                           label: window.label, error: nil, unknownModels: [])
+            }
+            connectedCosts[provider] = ProviderCost(
+                today: scaled(codex.today), month: scaled(codex.month),
+                dailyTokens: codex.dailyTokens.map {
+                    DailyTokenBucket(dayStart: $0.dayStart,
+                                     tokens: Int(Double($0.tokens) * scale),
+                                     billableTokens: Int(Double($0.billableTokens) * scale),
+                                     dollars: $0.dollars.map { $0 * scale }, unpricedTokens: 0)
+                })
+            connectedUpdated[provider] = Date()
+            localNotices[provider] = "Demo data — illustrative API-equivalent cost, not actual spending."
+        }
         self.lastUpdated = Date()
     }
 
-    /// Pure aggregation — single pass over events. Lives as a static so the
-    /// detached refresh task can call it without touching @MainActor state.
-    nonisolated private static func summarize(events: [TokenEvent]) -> ProviderCost {
+    private static func demoDailyBuckets(
+        _ values: [Int],
+        millionScale: Int,
+        apiDollarsPerMillion: Double
+    ) -> [DailyTokenBucket] {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = .current
-        let now = Date()
-        let startOfDay = cal.startOfDay(for: now)
-        let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? startOfDay
-        let currentHour = cal.dateComponents([.hour], from: now).hour ?? 0
-        let currentDay = (cal.dateComponents([.day], from: now).day ?? 1) - 1
-        // Rolling windows for per-model breakdown — approximate the live
-        // tile windows. We don't know the server's exact window alignment
-        // for either, so "last N hours from now" is the practical proxy.
-        // 5h matches Anthropic's rate-limit window; 7d matches both
-        // providers' weekly tile.
-        let recentStart = now.addingTimeInterval(-5 * 3600)
-        let weekStart = now.addingTimeInterval(-7 * 24 * 3600)
-
-        var todayDollars = 0.0, todayTokens = 0, todayBillable = 0
-        var monthDollars = 0.0, monthTokens = 0, monthBillable = 0
-        var hourlyBuckets = Array(repeating: 0.0, count: currentHour + 1)
-        var dailyBuckets = Array(repeating: 0.0, count: currentDay + 1)
-        // Filtered to non-zero token events so handshake/stub rows don't
-        // show up as "unpriced" warnings — the user only cares about
-        // models that actually moved tokens.
-        var todayUnknown: Set<String> = []
-        var monthUnknown: Set<String> = []
-        // Per-canonical-model billable tokens + dollars within the recent
-        // window. Cache reads excluded from `tokens` (they don't pressure
-        // the rate-limit counter), included in `dollars` (they cost real
-        // money). Two metrics, two consumers: usage-page shows tokens,
-        // cost-page shows dollars.
-        var recentTokensByModel: [String: Int] = [:]
-        var recentDollarsByModel: [String: Double] = [:]
-        // Same shape, weekly window. Two windows in one pass costs an
-        // extra `>=` per event — cheap relative to JSON parsing upstream.
-        var weekTokensByModel: [String: Int] = [:]
-        var weekDollarsByModel: [String: Double] = [:]
-
-        // Drop events older than every window's start. Using `min(...)`
-        // matters here because the rolling 7-day window straddles month
-        // boundaries: on May 3, weekStart is Apr 26, but `monthStart` is
-        // May 1, so a `>= monthStart` guard would silently filter out
-        // Apr 26–30 from the weekly slice. The 5h slice never had this
-        // problem (5h ⊂ today ⊂ month), but adding weekly broke the
-        // assumption — keep the broader guard.
-        let earliestStart = min(monthStart, weekStart)
-        for event in events {
-            guard event.timestamp >= earliestStart else { continue }
-            let cost = Pricing.cost(for: event)
-            // Two parallel running totals: `tokens` is the wire-level sum
-            // (ccusage parity); `billable` is input + output only, matching
-            // Anthropic's claude.ai stats panel which excludes cache tokens.
-            // Persisting both lets the Settings toggle flip the displayed
-            // figure instantly without re-scanning 30 days of session logs.
-            let billable = event.inputTokens + event.outputTokens
-            let tokens = billable + event.cacheCreationTokens + event.cacheReadTokens
-            let isUnpriced = tokens > 0 && !Pricing.isKnown(event.model)
-
-            // Month aggregation gated separately now that the outer guard
-            // is `min(monthStart, weekStart)` (so previous-month events
-            // can reach the weekly slice).
-            if event.timestamp >= monthStart {
-                monthDollars += cost
-                monthTokens += tokens
-                monthBillable += billable
-                let day = (cal.dateComponents([.day], from: event.timestamp).day ?? 1) - 1
-                if day < dailyBuckets.count { dailyBuckets[day] += cost }
-                if isUnpriced { monthUnknown.insert(event.model) }
-            }
-
-            // Today is a strict subset of month
-            if event.timestamp >= startOfDay {
-                todayDollars += cost
-                todayTokens += tokens
-                todayBillable += billable
-                let hour = cal.dateComponents([.hour], from: event.timestamp).hour ?? 0
-                if hour < hourlyBuckets.count { hourlyBuckets[hour] += cost }
-                if isUnpriced { todayUnknown.insert(event.model) }
-            }
-
-            // Weekly rolling window slice — superset of recent, subset of
-            // month (when month is short). Compute canonical name once and
-            // reuse for the 5h slice to avoid double work.
-            if event.timestamp >= weekStart {
-                let canon = Pricing.canonicalModelName(event.model)
-                if billable > 0 {
-                    weekTokensByModel[canon, default: 0] += billable
-                }
-                if cost > 0 {
-                    weekDollarsByModel[canon, default: 0] += cost
-                }
-
-                // 5h rolling window slice — strict subset of weekly.
-                if event.timestamp >= recentStart {
-                    if billable > 0 {
-                        recentTokensByModel[canon, default: 0] += billable
-                    }
-                    if cost > 0 {
-                        recentDollarsByModel[canon, default: 0] += cost
-                    }
-                }
-            }
+        let days = CostSummary.localHistoryDays()
+        let today = cal.startOfDay(for: Date())
+        let start = cal.date(byAdding: .day, value: -(days - 1), to: today) ?? today
+        return (0..<days).map { offset in
+            let day = cal.date(byAdding: .day, value: offset, to: start) ?? start
+            let value = values[offset % values.count]
+            let tokens = value * millionScale
+            return DailyTokenBucket(dayStart: day, tokens: tokens, billableTokens: tokens / 10,
+                                    dollars: Double(tokens) / 1_000_000 * apiDollarsPerMillion,
+                                    unpricedTokens: 0)
         }
-
-        let recentRows = Self.modelRows(
-            tokensByModel: recentTokensByModel,
-            dollarsByModel: recentDollarsByModel
-        )
-        let weekRows = Self.modelRows(
-            tokensByModel: weekTokensByModel,
-            dollarsByModel: weekDollarsByModel
-        )
-
-        return ProviderCost(
-            today: CostWindow(
-                dollars: todayDollars,
-                tokens: todayTokens,
-                billableTokens: todayBillable,
-                series: runningSum(hourlyBuckets),
-                label: "Today",
-                error: nil,
-                unknownModels: todayUnknown.sorted()
-            ),
-            month: CostWindow(
-                dollars: monthDollars,
-                tokens: monthTokens,
-                billableTokens: monthBillable,
-                series: runningSum(dailyBuckets),
-                label: CostBucketing.currentMonthLabel(),
-                error: nil,
-                unknownModels: monthUnknown.sorted()
-            ),
-            recentByModel: recentRows,
-            weekByModel: weekRows
-        )
-    }
-
-    /// Build sorted `ModelUsageRow`s from the two parallel per-model maps
-    /// for a given window. Shared between the 5h and weekly slices so
-    /// both stay perfectly consistent in shape, sorting, and percent-share
-    /// computation.
-    nonisolated private static func modelRows(
-        tokensByModel: [String: Int],
-        dollarsByModel: [String: Double]
-    ) -> [ModelUsageRow] {
-        let totalTokens = tokensByModel.values.reduce(0, +)
-        let totalDollars = dollarsByModel.values.reduce(0, +)
-        let canonicals = Set(tokensByModel.keys).union(dollarsByModel.keys)
-        return canonicals.map { canon in
-            let tokens = tokensByModel[canon] ?? 0
-            let dollars = dollarsByModel[canon] ?? 0
-            return ModelUsageRow(
-                model: canon,
-                displayName: prettyModelName(canon),
-                tokens: tokens,
-                dollars: dollars,
-                percent: totalTokens > 0 ? Double(tokens) / Double(totalTokens) : 0,
-                dollarPercent: totalDollars > 0 ? dollars / totalDollars : 0
-            )
-        }
-        .sorted {
-            // Tokens primary, dollars secondary — handles cache-read-only
-            // rows (zero billable tokens, non-zero dollars) by sinking
-            // them to the bottom but not disappearing.
-            if $0.tokens != $1.tokens { return $0.tokens > $1.tokens }
-            return $0.dollars > $1.dollars
-        }
-    }
-
-    /// Pretty-print the canonical model id for UI rows. Falls back to the
-    /// raw id if no friendlier name is wired up yet — better than a blank.
-    nonisolated private static func prettyModelName(_ canonical: String) -> String {
-        // Anthropic: "claude-opus-4-7" → "Opus 4.7"
-        if canonical.hasPrefix("claude-") {
-            let trimmed = String(canonical.dropFirst("claude-".count))
-            // Split at first dash, then collapse remaining dashes into dots
-            // so "opus-4-7" → "opus.4.7" → "Opus 4.7".
-            guard let dash = trimmed.firstIndex(of: "-") else {
-                return trimmed.capitalized
-            }
-            let family = String(trimmed[..<dash]).capitalized
-            let version = trimmed[trimmed.index(after: dash)...]
-                .replacingOccurrences(of: "-", with: ".")
-            return "\(family) \(version)"
-        }
-        // OpenAI: keep as-is, just uppercase the GPT prefix.
-        if canonical.hasPrefix("gpt-") {
-            return canonical.replacingOccurrences(of: "gpt-", with: "GPT-")
-        }
-        // OpenAI reasoning family ("o3-pro", "o4-mini-high", etc.) — already
-        // short and conventional, capitalize only the leading letter so it
-        // matches the typographic weight of "GPT-..." / "Opus 4.7".
-        if let first = canonical.first, first == "o", canonical.count > 1,
-           canonical.dropFirst().first?.isNumber == true {
-            return canonical.prefix(1).uppercased() + canonical.dropFirst()
-        }
-        return canonical
-    }
-
-    nonisolated private static func runningSum(_ values: [Double]) -> [Double] {
-        var out = [Double]()
-        out.reserveCapacity(values.count)
-        var sum = 0.0
-        for v in values { sum += v; out.append(sum) }
-        return out
     }
 
     // MARK: - Cache
@@ -385,6 +308,8 @@ final class CostStore: ObservableObject {
         var claudeMonthUnknown: [String] = []
         var codexTodayUnknown: [String] = []
         var codexMonthUnknown: [String] = []
+        var claudeDailyTokens: [DailyTokenBucket]
+        var codexDailyTokens: [DailyTokenBucket]
         var lastUpdated: Date?
     }
 
@@ -412,6 +337,8 @@ final class CostStore: ObservableObject {
             claudeMonthUnknown: claude.month.unknownModels,
             codexTodayUnknown: codex.today.unknownModels,
             codexMonthUnknown: codex.month.unknownModels,
+            claudeDailyTokens: claude.dailyTokens,
+            codexDailyTokens: codex.dailyTokens,
             lastUpdated: lastUpdated
         )
         if let data = try? Self.cacheEncoder.encode(snap) {
@@ -433,7 +360,8 @@ final class CostStore: ObservableObject {
                               billableTokens: snap.claudeMonthBillable,
                               series: snap.claudeMonthSeries,
                               label: CostBucketing.currentMonthLabel(), error: nil,
-                              unknownModels: snap.claudeMonthUnknown)
+                              unknownModels: snap.claudeMonthUnknown),
+            dailyTokens: snap.claudeDailyTokens
         )
         self.codex = ProviderCost(
             today: CostWindow(dollars: snap.codexToday, tokens: snap.codexTodayTokens,
@@ -444,8 +372,20 @@ final class CostStore: ObservableObject {
                               billableTokens: snap.codexMonthBillable,
                               series: snap.codexMonthSeries,
                               label: CostBucketing.currentMonthLabel(), error: nil,
-                              unknownModels: snap.codexMonthUnknown)
+                              unknownModels: snap.codexMonthUnknown),
+            dailyTokens: snap.codexDailyTokens
         )
         self.lastUpdated = snap.lastUpdated
+    }
+}
+
+extension IslandProvider {
+    var costProvider: TokenEvent.Provider {
+        switch self {
+        case .claude: return .claude
+        case .codex: return .codex
+        case .grok: return .grok
+        case .antigravity: return .antigravity
+        }
     }
 }

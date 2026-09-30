@@ -30,3 +30,9 @@ marketing/
 # See CLAUDE.md → "docs/ vs notes/" for what belongs here vs in public docs/.
 notes/
 .claude/
+# Local agent skills/config. Keep these out of the public repo.
+.agents/
+skills-lock.json
+AGENTS.md
+# Root guidance is shared with Codex code review.
+!/AGENTS.md

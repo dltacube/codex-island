@@ -57,13 +57,15 @@ private func providerBrandColor(_ provider: AlertEngine.Provider) -> Color {
     switch provider {
     case .claude: return IslandColor.claude
     case .codex:  return IslandColor.codex
+    case .grok, .antigravity: return provider.color
     }
 }
 
 private func providerLowerLabel(_ provider: AlertEngine.Provider) -> String {
     switch provider {
-    case .claude: return "claude"
-    case .codex:  return "codex"
+    case .claude: return "Claude"
+    case .codex:  return "Codex"
+    case .grok, .antigravity: return provider.name
     }
 }
 
@@ -72,6 +74,7 @@ private func recentRows(for provider: AlertEngine.Provider, store: CostStore) ->
     switch provider {
     case .claude: return store.claude.recentByModel
     case .codex:  return store.codex.recentByModel
+    case .grok, .antigravity: return store.cost(for: provider).recentByModel
     }
 }
 
@@ -80,6 +83,7 @@ private func weekRowsList(for provider: AlertEngine.Provider, store: CostStore) 
     switch provider {
     case .claude: return store.claude.weekByModel
     case .codex:  return store.codex.weekByModel
+    case .grok, .antigravity: return store.cost(for: provider).weekByModel
     }
 }
 
@@ -163,6 +167,7 @@ struct PerModelBreakdown: View {
 
     let provider: AlertEngine.Provider
     let metric: Metric
+    @ObservedObject private var currencyStore = CurrencyStore.shared
 
     @ObservedObject private var costStore = CostStore.shared
 
@@ -192,7 +197,7 @@ struct PerModelBreakdown: View {
 
             if rows.isEmpty {
                 Spacer(minLength: 0)
-                Text("no \(providerLowerLabel(provider)) activity in last 5h or this week")
+                Text(L10n.tr("no %@ activity in last 5h or this week", providerLowerLabel(provider)))
                     .font(Typography.caption)
                     .foregroundStyle(.white.opacity(0.4))
                 Spacer(minLength: 0)
@@ -203,7 +208,7 @@ struct PerModelBreakdown: View {
                             displayName: row.displayName,
                             recentAbsolute: row.recentAbsolute(metric: metric),
                             weekAbsolute: row.weekAbsolute(metric: metric),
-                            trailingValue: row.trailingValue(metric: metric),
+                            trailingValue: trailingValue(for: row),
                             color: color,
                             weight: perModelRowWeights[min(idx, perModelRowWeights.count - 1)]
                         )
@@ -211,6 +216,15 @@ struct PerModelBreakdown: View {
                 }
                 Spacer(minLength: 0)
             }
+        }
+    }
+
+    private func trailingValue(for row: JoinedModelRow) -> String {
+        switch metric {
+        case .tokens:
+            return row.trailingValue(metric: metric)
+        case .dollars:
+            return currencyStore.formatted(usd: row.week.dollars)
         }
     }
 
@@ -223,7 +237,7 @@ struct PerModelBreakdown: View {
     private var header: some View {
         let topWeight = perModelRowWeights[0]
         return HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text("BY MODEL")
+            Text(L10n.tr("BY MODEL"))
                 .font(Typography.sectionLabel)
                 .tracking(0.6)
                 .foregroundStyle(.white.opacity(0.55))
@@ -232,14 +246,14 @@ struct PerModelBreakdown: View {
                 Capsule()
                     .fill(color.opacity(topWeight))
                     .frame(width: 8, height: 4)
-                Text("5h")
+                Text(L10n.tr("5h"))
                     .font(Typography.caption)
                     .foregroundStyle(.white.opacity(0.50))
                     .padding(.trailing, 4)
                 Capsule()
                     .fill(color.opacity(topWeight * dimFillMultiplier))
                     .frame(width: 8, height: 4)
-                Text("week")
+                Text(L10n.tr("week"))
                     .font(Typography.caption)
                     .foregroundStyle(.white.opacity(0.50))
             }
@@ -380,10 +394,10 @@ struct BothHiddenPlaceholder: View {
     var body: some View {
         VStack(spacing: 6) {
             Spacer(minLength: 0)
-            Text("Both providers hidden")
+            Text(L10n.tr("Both providers hidden"))
                 .font(Typography.providerTitle)
                 .foregroundStyle(.white.opacity(0.45))
-            Text("Re-enable in Settings → Providers")
+            Text(L10n.tr("Re-enable in Settings → Providers"))
                 .font(Typography.caption)
                 .foregroundStyle(.white.opacity(0.32))
             Spacer(minLength: 0)

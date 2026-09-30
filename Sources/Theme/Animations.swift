@@ -10,11 +10,26 @@ extension Animation {
     /// reads better at 220ms (chart style change, etc).
     static let chartSwap = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.22)
 
+    /// Shared hover / selection chrome crossfade. One duration for every
+    /// "faint white wash" state change so the chrome reads as one product.
+    static let hoverFade = Animation.easeOut(duration: 0.12)
+
+    /// Horizontal page movement. Tuned between the too-snappy drawer curve
+    /// and the slower full ease-in-out pass: responsive start, quiet settle.
+    static let pageSwipe = Animation.timingCurve(0.25, 0.82, 0.25, 1, duration: 0.36)
+
     /// Asymmetric springs on shape morph. Opening is leisurely (the user is
     /// reaching toward the panel and tracks the morph); closing is snappy
     /// (the system responds to the user moving away).
     static let openMorph = Animation.spring(response: 0.42, dampingFraction: 0.82)
     static let closeMorph = Animation.spring(response: 0.30, dampingFraction: 0.88)
+
+    /// Selected-day detail is a small disclosure inside an already-open
+    /// panel, so it should be faster and more damped than the full island
+    /// open. The collapse is shorter because exits should get out of the
+    /// way before navigation continues.
+    static let detailExpand = Animation.spring(response: 0.36, dampingFraction: 0.94)
+    static let detailCollapse = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.20)
 }
 
 private struct BlurTransitionModifier: ViewModifier {
@@ -52,5 +67,17 @@ extension AnyTransition {
         )
         .combined(with: .opacity)
         .combined(with: .scale(scale: 0.96))
+    }
+
+    /// Small disclosure rows should not slide far enough to fight the panel
+    /// resize. A tiny anchored scale + blur reads as material settling into
+    /// place without shifting the surrounding grid.
+    static var detailReveal: AnyTransition {
+        .modifier(
+            active: BlurTransitionModifier(radius: 2),
+            identity: BlurTransitionModifier(radius: 0)
+        )
+        .combined(with: .opacity)
+        .combined(with: .scale(scale: 0.98, anchor: .top))
     }
 }

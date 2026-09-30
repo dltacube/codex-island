@@ -9,16 +9,18 @@ struct SegmentedControl<Value: Hashable>: View {
     @Binding var selected: Value
     let label: (Value) -> String
     var accessibilityPrefix: String = ""
+    var labelFont: Font = Typography.bodyNumber
 
     var body: some View {
         HStack(spacing: 0) {
             ForEach(items, id: \.self) { item in
                 let isOn = (item == selected)
+                let itemLabel = L10n.tr(label(item))
                 Button {
                     selected = item
                 } label: {
-                    Text(label(item))
-                        .font(Typography.bodyNumber)
+                    Text(itemLabel)
+                        .font(labelFont)
                         .foregroundStyle(isOn
                             ? Color.white.opacity(0.95)
                             : .white.opacity(0.55))
@@ -33,10 +35,11 @@ struct SegmentedControl<Value: Hashable>: View {
                                 }
                         }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PressableButtonStyle(scale: 0.97))
+                .animation(.hoverFade, value: isOn)
                 .accessibilityLabel(accessibilityPrefix.isEmpty
-                    ? label(item)
-                    : "\(accessibilityPrefix), \(label(item))")
+                    ? itemLabel
+                    : L10n.tr("%@, %@", L10n.tr(accessibilityPrefix), itemLabel))
                 .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
             }
         }
@@ -58,7 +61,7 @@ struct PillButton: View {
 
     var body: some View {
         Button(action: action) {
-            Text(label)
+            Text(L10n.tr(label))
                 .font(Typography.button)
                 .foregroundStyle(.white.opacity(0.9))
                 .padding(.horizontal, 12)
@@ -72,8 +75,9 @@ struct PillButton: View {
                         }
                 }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle(scale: 0.97))
         .disabled(isLoading)
         .opacity(isLoading ? 0.55 : 1)
+        .animation(.hoverFade, value: isLoading)
     }
 }
