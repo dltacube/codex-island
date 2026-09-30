@@ -44,6 +44,9 @@ struct EnterpriseUsageTests {
         expect(parse(#"{"is_enabled":true,"used_credits":47,"monthly_limit":"unknown"}"#) == nil, "malformed limit is not unlimited")
         let closed = parse(#"{"is_enabled":true,"used_credits":0,"monthly_limit":0}"#)!
         expect(!closed.isUnlimitedAmount && closed.usedPercent == 1, "zero spend cap is exhausted rather than unlimited")
+        let reportedZeroCap = parse(#"{"is_enabled":true,"used_credits":0,"monthly_limit":0,"utilization":0}"#)!
+        expect(reportedZeroCap.usedPercent == 1 && reportedZeroCap.displayedFraction(mode: .remaining) == 0,
+               "zero credit cap overrides a reported zero utilization")
 
         let en = Locale(identifier: "en_US")
         expect(UsageCreditDisplay.compactCurrency(1_000, code: "USD", locale: en) == "$1k", "notch abbreviates thousand-dollar spend")
