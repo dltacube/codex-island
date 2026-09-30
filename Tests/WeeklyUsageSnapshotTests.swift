@@ -322,6 +322,10 @@ struct WeeklyUsageSnapshotTests {
             && priced.tier(for: .tokens, quote: wonQuote) == priced.tier(for: .tokens)
             && priced.shareText(metric: .apiValue, quote: poundQuote).contains("White card"),
                "converted card and caption use the same currency-based color")
+        let kronaQuote = CurrencyQuote(currency: .sek, usdRate: 10.5, locale: Locale(identifier: "sv_SE"))
+        expect(priced.shareText(metric: .apiValue, quote: kronaQuote).contains("13 440,63 kr")
+            && priced.tier(for: .apiValue, quote: kronaQuote) == .black,
+               "SEK from the cost currency PR also uses Swedish suffix formatting and the correct card club")
         let belowPoundMilestone = CurrencyQuote(currency: .gbp, usdRate: 0.05)
         expect(priced.valueMilestone(for: belowPoundMilestone) == nil
             && priced.valueChallenge(for: belowPoundMilestone) == "What does yours look like?"

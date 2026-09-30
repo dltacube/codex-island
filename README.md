@@ -217,7 +217,7 @@ runs as an accessory app with no Dock icon and no menu bar.
   target display, and island width on non-notched screens.
 - **Providers:** Claude/Codex visibility and status, token-counting mode, and a
   manual refresh for local cost data. Cost estimates can be displayed in USD,
-  CNY, EUR, GBP, JPY, KRW, CAD, AUD, or CHF. Conversion uses a cached daily
+  CNY, EUR, GBP, JPY, KRW, CAD, AUD, CHF, or SEK. Conversion uses a cached daily
   reference rate; the underlying model prices and cost calculations remain in
   USD. Like model pricing, exchange rates load from cache at startup and are
   checked every six hours, fetching when at least 24 hours old. Refresh also

@@ -11,6 +11,7 @@ enum DisplayCurrency: String, CaseIterable, Codable, Identifiable {
     case cad = "CAD"
     case aud = "AUD"
     case chf = "CHF"
+    case sek = "SEK"
 
     var id: String { rawValue }
 
@@ -24,7 +25,17 @@ enum DisplayCurrency: String, CaseIterable, Codable, Identifiable {
         case .cad: "C$"
         case .aud: "A$"
         case .chf: "CHF "
+        case .sek: "SEK "
         }
+    }
+
+    func affixes(locale: Locale) -> (prefix: String, suffix: String) {
+        guard self == .sek else { return (symbol, "") }
+        let formatted = 1.0.formatted(.currency(code: rawValue).locale(locale).attributed)
+        let numbers = formatted.runs.filter { $0.numberPart != nil }
+        guard let first = numbers.first, let last = numbers.last else { return (symbol, "") }
+        return (String(formatted.characters[..<first.range.lowerBound]),
+                String(formatted.characters[last.range.upperBound...]))
     }
 
     var menuLabel: String { "\(rawValue)  \(symbol)" }
@@ -33,7 +44,7 @@ enum DisplayCurrency: String, CaseIterable, Codable, Identifiable {
     var colorClubThresholds: (black: Double, blue: Double) {
         switch self {
         case .usd, .eur, .gbp, .cad, .aud, .chf: (1_000, 10_000)
-        case .cny: (10_000, 100_000)
+        case .cny, .sek: (10_000, 100_000)
         case .jpy: (100_000, 1_000_000)
         case .krw: (1_000_000, 10_000_000)
         }
@@ -140,7 +151,7 @@ final class CurrencyStore: ObservableObject {
             .flatMap(DisplayCurrency.init(rawValue:)) ?? .usd
         if let data = defaults.data(forKey: Self.cacheKey),
            let decoded = try? JSONDecoder().decode(CachedRates.self, from: data),
-           Self.validRates(decoded.rates) {
+           Self.validRates(decoded.rates, requiringAllCurrencies: false) {
             cache = decoded
         } else {
             cache = nil
@@ -165,6 +176,9 @@ final class CurrencyStore: ObservableObject {
         displayCurrency.symbol
     }
 
+    var displayPrefix: String { displayCurrency.affixes(locale: L10n.locale).prefix }
+    var displaySuffix: String { displayCurrency.affixes(locale: L10n.locale).suffix }
+
     var displayUsesWholeUnits: Bool {
         displayCurrency.usesWholeUnits
     }
@@ -173,7 +187,7 @@ final class CurrencyStore: ObservableObject {
         currency == .usd || cache?.rates[currency.rawValue] != nil
     }
 
-    func formatted(usd: Double, compact: Bool = true, includesSymbol: Bool = true) -> String {
+    func formatted(usd: Double, compact: Bool = true, includesSymbol: Bool = true, locale: Locale = L10n.locale) -> String {
         let value = converted(usd: usd)
         let digits: Int
         if displayUsesWholeUnits || value >= 100 {
@@ -186,12 +200,13 @@ final class CurrencyStore: ObservableObject {
 
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
-        formatter.locale = L10n.locale
+        formatter.locale = locale
         formatter.minimumFractionDigits = digits
         formatter.maximumFractionDigits = digits
         formatter.usesGroupingSeparator = true
         let number = formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
-        return includesSymbol ? displaySymbol + number : number
+        let affixes = displayCurrency.affixes(locale: locale)
+        return includesSymbol ? affixes.prefix + number + affixes.suffix : number
     }
 
     func refresh() {
@@ -206,9 +221,10 @@ final class CurrencyStore: ObservableObject {
         }
     }
 
-    private static func validRates(_ rates: [String: Double]) -> Bool {
-        rates["USD"] == 1 && DisplayCurrency.allCases.allSatisfy {
-            guard let rate = rates[$0.rawValue] else { return false }
+    private static func validRates(_ rates: [String: Double], requiringAllCurrencies: Bool = true) -> Bool {
+        guard rates["USD"] == 1 else { return false }
+        return DisplayCurrency.allCases.allSatisfy {
+            guard let rate = rates[$0.rawValue] else { return !requiringAllCurrencies }
             return rate.isFinite && rate > 0
         }
     }
