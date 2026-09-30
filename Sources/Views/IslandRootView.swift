@@ -556,7 +556,7 @@ private struct PeekPillOverlay: View {
                 : L10n.tr("%@: no data for 5-hour window", provider)
         }
         if window.isUnlimitedAmount, let amount = window.usedAmount {
-            return L10n.tr("%@, %@ spent, unlimited", provider,
+            return L10n.tr("%@, %@ credits used, unlimited", provider,
                            UsageCreditDisplay.currency(amount, code: window.currencyCode))
         }
         let mode = UsageDisplayModeStore.shared.mode

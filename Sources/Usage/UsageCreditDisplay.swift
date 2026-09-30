@@ -37,9 +37,9 @@ extension WindowUsage {
         guard let usedAmount else { return nil }
         let used = UsageCreditDisplay.currency(usedAmount, code: currencyCode)
         if let limitAmount {
-            return L10n.tr("%@ / %@ spent", used,
+            return L10n.tr("%@ / %@ credits used", used,
                            UsageCreditDisplay.currency(limitAmount, code: currencyCode))
         }
-        return L10n.tr("%@ spent · unlimited", used)
+        return L10n.tr("%@ credits used · unlimited", used)
     }
 }

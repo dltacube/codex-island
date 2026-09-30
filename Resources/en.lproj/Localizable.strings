@@ -373,9 +373,9 @@
 "Saved token counts exceed the supported range. Check the recovery files before trying again." = "Saved token counts exceed the supported range. Check the recovery files before trying again.";
 
 "Usage credits" = "Usage credits";
-"%@ / %@ spent" = "%@ / %@ spent";
-"%@ spent · unlimited" = "%@ spent · unlimited";
-"%@, %@ spent, unlimited" = "%@, %@ spent, unlimited";
+"%@ / %@ credits used" = "%@ / %@ credits used";
+"%@ credits used · unlimited" = "%@ credits used · unlimited";
+"%@, %@ credits used, unlimited" = "%@, %@ credits used, unlimited";
 "%@: no data for monthly window" = "%@: no data for monthly window";
 "%@: %d percent of monthly credits used" = "%@: %d percent of monthly credits used";
 "%@: %d percent of monthly credits remaining" = "%@: %d percent of monthly credits remaining";

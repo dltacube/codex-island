@@ -22,8 +22,9 @@ window, and chart styles and history keys remain unchanged.
 
 Enterprise accounts can report monthly `extra_usage` credits alongside or instead
 of the five-hour and weekly windows. The app converts cent amounts to currency
-units, keeps missing spend distinct from zero, and shows unlimited spend as an
+units, keeps missing spend distinct from zero, and shows unlimited credit usage as an
 amount rather than a quota percentage. Credit amounts use the API currency.
+They describe credits consumed, not an invoice or an actual billed charge.
 
 A missing `monthly_limit` is unknown; only an explicit `null` represents
 unlimited credits. Incomplete credit readings are omitted.
