@@ -18,6 +18,22 @@ failed refreshes, so an offline request cannot bring back a removed 5h tile.
 Zero-percent windows remain visible. Peek and alerts select the same available
 window, and chart styles and history keys remain unchanged.
 
+## Claude Enterprise credits
+
+Enterprise accounts can report monthly `extra_usage` credits alongside or instead
+of the five-hour and weekly windows. The app converts cent amounts to currency
+units, keeps missing spend distinct from zero, and shows unlimited credit usage as an
+amount rather than a quota percentage. Credit amounts use the API currency.
+They describe credits consumed, not an invoice or an actual billed charge.
+
+A missing `monthly_limit` is unknown; only an explicit `null` represents
+unlimited credits. Incomplete credit readings are omitted.
+
+Monthly credit limits are evaluated independently for threshold alerts. Reset
+countdowns use only provider-supplied boundaries. Percentage-only history remains
+available to charts but is not used to seed monthly spend after relaunch. A failed
+refresh preserves a previous credit reading with the error shown beside it.
+
 ## Grok subscriptions
 
 Sign in with the official Grok CLI (`grok login`) using your Grok subscription.

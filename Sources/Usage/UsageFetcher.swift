@@ -47,7 +47,8 @@ enum UsageFetcher {
     private static func errorPair(_ message: String) -> AppUsage {
         AppUsage(
             fiveHour: WindowUsage(usedPercent: 0, resetAt: nil, error: message),
-            weekly: WindowUsage(usedPercent: 0, resetAt: nil, error: message)
+            weekly: WindowUsage(usedPercent: 0, resetAt: nil, error: message),
+            monthly: WindowUsage(usedPercent: 0, resetAt: nil, error: message)
         )
     }
 
@@ -100,6 +101,7 @@ enum UsageFetcher {
             switch kind {
             case .fiveHour: if fiveHour == nil { fiveHour = parseCodexWindow(d) }
             case .weekly:   if weekly == nil { weekly = parseCodexWindow(d) }
+            case .monthly: break
             }
         }
         var reported: [UsageWindow] = []
@@ -207,16 +209,24 @@ enum UsageFetcher {
                    let type = err["type"] as? String, type == "rate_limit_error" {
                     return .rateLimited
                 }
-                return .success(AppUsage(
-                    fiveHour: parseClaudeWindow(obj["five_hour"]),
-                    weekly: parseClaudeWindow(obj["seven_day"]),
-                    plan: plan
-                ))
+                return .success(parseClaudeUsageResponse(obj, plan: plan))
             }
             return .otherError("parse error")
         } catch {
             return .otherError(error.localizedDescription)
         }
+    }
+
+    static func parseClaudeUsageResponse(_ object: [String: Any], plan: String?) -> AppUsage {
+        let fiveHour = parseClaudeWindow(object["five_hour"])
+        let weekly = parseClaudeWindow(object["seven_day"])
+        let monthly = parseClaudeEnterpriseCredits(object["extra_usage"])
+        var reported: [UsageWindow] = []
+        if !fiveHour.isUnreported { reported.append(.fiveHour) }
+        if !weekly.isUnreported { reported.append(.weekly) }
+        if monthly != nil { reported.append(.monthly) }
+        return AppUsage(fiveHour: fiveHour, weekly: weekly, monthly: monthly ?? .unknown,
+                        plan: plan, reportedWindows: reported)
     }
 
     private static func parseClaudeWindow(_ obj: Any?) -> WindowUsage {
@@ -237,5 +247,46 @@ enum UsageFetcher {
             resetAt = f.date(from: s) ?? ISO8601DateFormatter().date(from: s)
         }
         return WindowUsage(usedPercent: min(1, max(0, normalized)), resetAt: resetAt, error: nil)
+    }
+
+    static func parseClaudeEnterpriseCredits(_ obj: Any?) -> WindowUsage? {
+        guard let details = obj as? [String: Any],
+              details["is_enabled"] as? Bool == true,
+              let usedCents = details["used_credits"] as? Double,
+              usedCents.isFinite, usedCents >= 0 else { return nil }
+
+        // Claude CLI treats these API values as cents (for example, 1600 is
+        // displayed as $16.00). Keep raw cents for utilization, then store
+        // major currency units for the app's currency formatter.
+        guard let rawLimit = details["monthly_limit"] else { return nil }
+        let limitCents = rawLimit as? Double
+        if !(rawLimit is NSNull), limitCents == nil { return nil }
+        guard limitCents.map({ $0.isFinite && $0 >= 0 }) ?? true else { return nil }
+        let reportedUtilization = (details["utilization"] as? Double).map { $0 / 100 }
+        let utilization: Double
+        if limitCents == 0 {
+            utilization = 1
+        } else {
+            utilization = reportedUtilization ?? limitCents.map { usedCents / $0 } ?? 0
+        }
+        guard utilization.isFinite else { return nil }
+        let resetAt: Date?
+        if let epoch = details["resets_at"] as? Double, epoch.isFinite {
+            resetAt = Date(timeIntervalSince1970: epoch)
+        } else if let text = details["resets_at"] as? String {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            resetAt = formatter.date(from: text) ?? ISO8601DateFormatter().date(from: text)
+        } else {
+            resetAt = nil
+        }
+        return WindowUsage(
+            usedPercent: min(1, max(0, utilization)),
+            resetAt: resetAt,
+            error: nil,
+            usedAmount: usedCents / 100,
+            limitAmount: limitCents.map { $0 / 100 },
+            currencyCode: details["currency"] as? String ?? "USD"
+        )
     }
 }

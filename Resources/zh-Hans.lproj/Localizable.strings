@@ -371,6 +371,16 @@
 "The usage archive changed. Scan again before saving." = "用量存档已更改。请重新扫描后再保存。";
 "A selected recovery source is no longer available. Choose it again, then scan." = "所选恢复来源已不可用。请重新选择后再扫描。";
 "Saved token counts exceed the supported range. Check the recovery files before trying again." = "保存的 token 数量超出了支持范围。请检查恢复文件后重试。";
+
+"Usage credits" = "用量额度";
+"%@ / %@ credits used" = "已用额度 %@ / %@";
+"%@ credits used · unlimited" = "已用额度 %@ · 不限额";
+"%@, %@ credits used, unlimited" = "%@，已用额度 %@，不限额";
+"%@: no data for monthly window" = "%@：月度额度暂无数据";
+"%@: %d percent of monthly credits used" = "%@：月度额度已用 %d%%";
+"%@: %d percent of monthly credits remaining" = "%@：月度额度剩余 %d%%";
+"%@: %d percent of monthly credits used, %@" = "%@：月度额度已用 %d%%，%@";
+"%@: %d percent of monthly credits remaining, %@" = "%@：月度额度剩余 %d%%，%@";
 "History appears after more refreshes." = "更多刷新后将显示历史记录。";
 "Recorded usage" = "已记录的用量";
 

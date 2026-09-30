@@ -14,7 +14,10 @@ struct CompactQuotaGauge: View {
         let amount = min(1, max(0, progress))
         let shape = UnrollingQuotaShape(progress: progress)
         ZStack(alignment: .topLeading) {
-            if usage.hasReading {
+            if usage.isUnlimitedAmount {
+                Text("∞").font(Typography.chartValue).foregroundStyle(tint)
+                    .position(x: 10, y: height / 2).opacity(1 - amount)
+            } else if usage.hasReading {
                 shape.stroke(tint.opacity(0.24), style: StrokeStyle(lineWidth: 2 + amount, lineCap: .round, lineJoin: .round))
                 shape.trim(from: 0, to: fraction)
                     .stroke(tint, style: StrokeStyle(lineWidth: 2 + amount, lineCap: .round, lineJoin: .round))
@@ -23,15 +26,16 @@ struct CompactQuotaGauge: View {
                 shape.stroke(.white.opacity(0.35), style: StrokeStyle(lineWidth: 2 + amount, lineCap: .round, lineJoin: .round, dash: [2, 3]))
             }
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(usage.hasReading ? "\(usage.displayedPercentInt(mode: mode))%" : "-%")
+                Text(usage.isUnlimitedAmount ? UsageCreditDisplay.currency(usage.usedAmount ?? 0, code: usage.currencyCode) : usage.hasReading ? "\(usage.displayedPercentInt(mode: mode))%" : "-%")
                     .font(Typography.bodyNumber)
                     .foregroundStyle(.white.opacity(usage.hasReading ? 0.82 : 0.40))
                 Spacer(minLength: 0)
-                Text(L10n.tr(mode == .used ? "Used" : "Quota left"))
+                Text(usage.isUnlimitedAmount ? "∞" : L10n.tr(mode == .used ? "Used" : "Quota left"))
                     .font(Typography.micro)
                     .foregroundStyle(.white.opacity(0.55))
             }
             .lineLimit(1)
+            .minimumScaleFactor(0.6)
             .frame(width: expandedWidth)
             .position(x: expandedWidth / 2, y: max(7, height / 2 - 5.5))
             .modifier(PeekContentReveal(progress: progress, start: 0.6, end: 0.9))

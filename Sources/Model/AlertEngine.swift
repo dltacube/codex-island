@@ -43,8 +43,9 @@ final class AlertEngine: ObservableObject {
         let lines: [PulseLine]
     }
 
-    /// Highest severity across visible 5h windows currently at/above their
-    /// respective threshold. Drives the silhouette glow color.
+    /// Highest severity across visible primary windows at/above their
+    /// respective threshold. Drives the silhouette glow color for the provider's
+    /// primary reported window, including Enterprise monthly usage credits.
     @Published private(set) var severity: Severity = .none
     @Published private(set) var providerSeverities: [Provider: Severity] = [:]
 
@@ -60,7 +61,8 @@ final class AlertEngine: ObservableObject {
     struct CrossingKey: Hashable {
         let provider: Provider
         let threshold: Threshold
-        let resetAt: Date
+        let resetAt: Date?
+        var windowKind: UsageWindow = .fiveHour
     }
 
     private var crossings: Set<CrossingKey> = []
@@ -110,12 +112,12 @@ final class AlertEngine: ObservableObject {
             && AlertThresholdStore.warningRange.contains(warning)
             && AlertThresholdStore.criticalRange.contains(critical)
 
-        let inputs: [AlertDecision.WindowInput] = [
-            AlertDecision.WindowInput(
-                provider: .claude,
-                visible: visibility.claudeVisible,
-                window: usage.claude.fiveHour
-            ),
+        let claudeKinds: [UsageWindow] = usage.claude.visibleWindows.contains(.monthly) && usage.claude.peekWindowKind != .monthly
+            ? [usage.claude.peekWindowKind, .monthly] : [usage.claude.peekWindowKind]
+        let inputs: [AlertDecision.WindowInput] = claudeKinds.map { kind in
+            AlertDecision.WindowInput(provider: .claude, visible: visibility.claudeVisible,
+                window: usage.claude.window(kind), windowKind: kind)
+        } + [
             AlertDecision.WindowInput(
                 provider: .codex,
                 visible: visibility.codexVisible,
@@ -219,6 +221,7 @@ enum AlertDecision {
         let provider: AlertEngine.Provider
         let visible: Bool
         let window: WindowUsage
+        var windowKind: UsageWindow = .fiveHour
     }
 
     /// Returns severity per visible window whose percent meets at least the
@@ -233,12 +236,12 @@ enum AlertDecision {
         for input in inputs {
             guard input.visible else { continue }
             // Treat error-only states (no value, error set) as "no signal".
-            if !input.window.hasReading { continue }
+            if !input.window.hasPercentageReading { continue }
             let pct = input.window.percentInt
             if pct >= critical {
-                out[input.provider] = .critical
+                out[input.provider] = max(out[input.provider] ?? .none, .critical)
             } else if pct >= warning {
-                out[input.provider] = .warning
+                out[input.provider] = max(out[input.provider] ?? .none, .warning)
             }
         }
         return out
@@ -268,14 +271,26 @@ enum AlertDecision {
     ) -> CrossingsEvalResult {
         var next = previous
 
-        // Prune keys whose resetAt is stale relative to the current window.
-        // A `nil` resetAt means we have no current boundary; in that case
-        // we can't evaluate crossings for that provider, so leave its keys
-        // alone (they'll get pruned once a real resetAt arrives).
         for input in inputs {
-            guard let currentReset = input.window.resetAt else { continue }
-            next = next.filter { key in
-                key.provider != input.provider || key.resetAt == currentReset
+            if let currentReset = input.window.resetAt {
+                next = Set(next.compactMap { key in
+                    guard key.provider == input.provider, key.windowKind == input.windowKind else { return key }
+                    if input.windowKind == .monthly, key.resetAt == nil {
+                        let bound = key.threshold == .warning ? warning : critical
+                        guard input.window.hasPercentageReading, input.window.percentInt >= bound else { return nil }
+                        return AlertEngine.CrossingKey(provider: key.provider, threshold: key.threshold,
+                                                       resetAt: currentReset, windowKind: key.windowKind)
+                    }
+                    return key.resetAt == currentReset ? key : nil
+                })
+            } else if input.windowKind == .monthly, input.window.hasPercentageReading {
+                // Without a provider boundary, rearm only after an observed
+                // reading falls below the threshold. Failed polls cannot rearm.
+                next = next.filter { key in
+                    if key.provider != input.provider || key.windowKind != input.windowKind { return true }
+                    let bound = key.threshold == .warning ? warning : critical
+                    return input.window.percentInt >= bound
+                }
             }
         }
 
@@ -285,8 +300,9 @@ enum AlertDecision {
 
         for input in inputs {
             guard input.visible else { continue }
-            guard let resetAt = input.window.resetAt else { continue }
-            if !input.window.hasReading { continue }
+            let resetAt = input.window.resetAt
+            guard resetAt != nil || input.windowKind == .monthly else { continue }
+            if !input.window.hasPercentageReading { continue }
             let pct = input.window.percentInt
 
             for threshold in [AlertEngine.Threshold.warning, AlertEngine.Threshold.critical] {
@@ -295,9 +311,13 @@ enum AlertDecision {
                 let key = AlertEngine.CrossingKey(
                     provider: input.provider,
                     threshold: threshold,
-                    resetAt: resetAt
+                    resetAt: resetAt,
+                    windowKind: input.windowKind
                 )
-                if !next.contains(key) {
+                let alreadyCrossed = resetAt == nil
+                    ? next.contains { $0.provider == input.provider && $0.windowKind == input.windowKind && $0.threshold == threshold }
+                    : next.contains(key)
+                if !alreadyCrossed {
                     next.insert(key)
                     newCrossings.append(key)
                 }
@@ -306,7 +326,7 @@ enum AlertDecision {
             // Build pulse line per provider that crossed any threshold this
             // tick — coalesces both providers into a single event when both
             // happen on the same usage update.
-            if newCrossings.contains(where: { $0.provider == input.provider }) {
+            if newCrossings.contains(where: { $0.provider == input.provider && $0.windowKind == input.windowKind }) {
                 let sev: AlertEngine.Severity = pct >= critical
                     ? .critical
                     : (pct >= warning ? .warning : .none)
@@ -328,4 +348,3 @@ enum AlertDecision {
         return CrossingsEvalResult(next: next, pulse: pulse)
     }
 }
-

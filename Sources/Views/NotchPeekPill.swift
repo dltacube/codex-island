@@ -30,6 +30,7 @@ struct NotchPeekPill: View {
     var gaugeProgress: CGFloat = 0
     var gaugeHeight: CGFloat = 38
     var showsResetCaption = false
+    var valueWidth: CGFloat? = nil
     @ObservedObject private var usageDisplay = UsageDisplayModeStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -110,7 +111,7 @@ struct NotchPeekPill: View {
                 }
             }
             .frame(height: 12)
-            Text(usage.hasReading ? (resetText ?? (windowLengthFallback.isEmpty ? "-" : windowLengthFallback)) : "-")
+            Text(usage.isUnlimitedAmount ? "∞" : usage.hasReading ? (resetText ?? (windowLengthFallback.isEmpty ? "-" : windowLengthFallback)) : "-")
                 .font(Typography.caption)
                 .foregroundStyle(.white.opacity(!usage.hasReading ? 0.40 : (resetText == nil ? 0.45 : 0.70)))
                 .frame(height: 11)
@@ -144,7 +145,11 @@ struct NotchPeekPill: View {
     private var percentLabel: some View {
         Text(percentText)
             .font(Typography.bodyNumber)
+            .minimumScaleFactor(0.5)
+            .frame(width: contents == .stacked && usage.isUnlimitedAmount ? valueWidth : nil,
+                   alignment: alignment == .leading ? .trailing : .leading)
             .foregroundStyle(effectiveTint)
+            .help(usage.isUnlimitedAmount ? usage.amountCaption ?? "" : "")
     }
 
     private var separator: some View {
@@ -188,7 +193,12 @@ struct NotchPeekPill: View {
     }
 
     private var percentText: String {
-        "\(usage.displayedPercentInt(mode: usageDisplay.mode))%"
+        if usage.isUnlimitedAmount, let amount = usage.usedAmount {
+            return contents == .stacked
+                ? UsageCreditDisplay.compactCurrency(amount, code: usage.currencyCode)
+                : UsageCreditDisplay.currency(amount, code: usage.currencyCode)
+        }
+        return "\(usage.displayedPercentInt(mode: usageDisplay.mode))%"
     }
 
     /// Shared compact countdown (`Nm` / `Nh` / `Nd Nh`). Returns nil if

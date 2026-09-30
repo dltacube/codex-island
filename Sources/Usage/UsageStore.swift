@@ -221,7 +221,7 @@ final class UsageStore: ObservableObject {
                         self.tokenRefreshPingAttempted = true
                         ClaudeCredentials.spawnTokenRefreshPing()
                     }
-                } else if cl.fiveHour.error == nil || cl.weekly.error == nil {
+                } else if cl.visibleWindows.contains(where: { cl.window($0).error == nil }) {
                     self.tokenRefreshPingAttempted = false
                 }
             }
@@ -261,7 +261,7 @@ final class UsageStore: ObservableObject {
     /// PRIOR window too: a transient failure replaces the sentinel's caption
     /// with its own, and judging only the merged shape would re-open the
     /// refill door on every failed poll.
-    private static func seeded(_ current: AppUsage, prior: AppUsage? = nil,
+    static func seeded(_ current: AppUsage, prior: AppUsage? = nil,
                                provider: AlertEngine.Provider,
                                fillUnreported: Bool) -> AppUsage {
         func fill(_ kind: UsageWindow, _ existing: WindowUsage,
@@ -282,6 +282,7 @@ final class UsageStore: ObservableObject {
         return AppUsage(
             fiveHour: fill(.fiveHour, current.fiveHour, prior?.fiveHour),
             weekly: fill(.weekly, current.weekly, prior?.weekly),
+            monthly: current.monthly,
             plan: current.plan,
             reportedWindows: current.reportedWindows
         )
@@ -379,7 +380,7 @@ final class UsageStore: ObservableObject {
                 // rateLimitCooldown) — retrying every 5s only feeds it. Bail
                 // and let the normal poll's cooldown machinery recover.
                 if cl.fiveHour.error == ClaudeCredentials.rateLimitedMessage { break }
-                if cl.fiveHour.error == nil || cl.weekly.error == nil {
+                if cl.visibleWindows.contains(where: { cl.window($0).error == nil }) {
                     await MainActor.run {
                         self?.claude = cl
                         self?.lastUpdated = Date()
