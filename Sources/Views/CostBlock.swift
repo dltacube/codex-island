@@ -132,7 +132,7 @@ struct CostTile: View {
     private var dollarHero: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(currencyStore.displaySymbol)
+                Text(currencyStore.displayPrefix)
                     .font(Typography.unit)
                     .foregroundStyle(.white.opacity(0.6))
                 CountUpDollar(
@@ -142,6 +142,11 @@ struct CostTile: View {
                     glowOpacity: 0,
                     font: .system(size: 32, weight: .semibold, design: .monospaced)
                 )
+                if !currencyStore.displaySuffix.isEmpty {
+                    Text(currencyStore.displaySuffix)
+                        .font(Typography.unit)
+                        .foregroundStyle(.white.opacity(0.6))
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -260,7 +265,7 @@ struct CostTile: View {
     private var sparkHero: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(currencyStore.displaySymbol)
+                Text(currencyStore.displayPrefix)
                     .font(Typography.micro)
                     .foregroundStyle(.white.opacity(0.6))
                 Text(formattedDollarsCompact)
@@ -268,6 +273,11 @@ struct CostTile: View {
                     .foregroundStyle(color)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+                if !currencyStore.displaySuffix.isEmpty {
+                    Text(currencyStore.displaySuffix)
+                        .font(Typography.micro)
+                        .foregroundStyle(.white.opacity(0.6))
+                }
             }
             CostSparkline(series: window.series, color: color)
                 .frame(height: 30)
