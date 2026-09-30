@@ -4,14 +4,17 @@ Thanks for being here. CodexIsland is small enough that any contribution moves t
 
 ## Reporting bugs
 
-Open an issue. Useful things to include:
+Use the [issue chooser](https://github.com/ericjypark/codex-island/issues/new/choose)
+for bug reports, feature requests, or provider API regressions. Other questions
+can use a blank issue. Bug reports ask for the app version shown in Settings,
+OS and hardware, installation method, observed and expected behavior, and
+reproduction steps. For source builds, include the commit and say which app
+copy you launched.
 
-- macOS version (`sw_vers`) — particularly if the notch detection or window placement is off.
-- Output of `defaults read dev.codexisland.CodexIsland` if it's a settings-related bug.
-- A short description of what you expected vs. what happened.
-- Whether Claude / Codex actually has data populated in the panel — `auth required` errors usually mean the upstream creds aren't where we expect them.
-
-If `/api/oauth/usage` or `/wham/usage` starts returning unexpected fields, both endpoints are undocumented and may have changed; please grab a `curl` of the response (with the token redacted) so we can update the parser.
+Logs and API responses are optional. Share only the relevant, redacted evidence;
+never post bearer tokens, cookies, credential files, or Keychain contents.
+CodexIsland reads Claude credentials but does not refresh OAuth tokens or write
+credentials. Claude Code owns that process.
 
 ## Building locally
 
@@ -32,11 +35,23 @@ new commits and also run on `main`. Forks use the same checks without repository
 secrets. Run `bash scripts/run-tests.sh` and `./scripts/verify.sh` locally before opening
 a PR; workflow edits can be checked with `actionlint`.
 
-Codex reviews pull requests through the GitHub integration and follows the
-`Code Review Rules` in `AGENTS.md`. To request another review, comment
-`@codex review` on the PR. Resolve findings and wait for checks on the latest
-commit before merging. A review service being unavailable does not establish
-whether the app builds or passes tests.
+The PR template asks for the problem, verification results, UI evidence when
+applicable, and risks. Record unavailable checks rather than marking them as
+passed. Metadata-only changes can use targeted validation.
+
+Codex reviews use the official GitHub integration and follow the
+`Code Review Rules` in `AGENTS.md`. Automatic reviews are configured in
+[Codex settings](https://app.chatgpt.com/settings/code-review), separately from
+these templates and the CI workflow. Enable code review for the repository,
+choose whose PRs receive automatic reviews, and set the review trigger for new
+PRs. Check personal automatic-review preferences when using that mode. See the
+[official setup guide](https://learn.chatgpt.com/docs/third-party/github).
+
+For another review, comment `@codex review` on the PR. Check the reviewed commit
+against the latest head, resolve valid findings, and wait for CI on the latest
+commit before merging. Reviews do not merge or release changes. A review
+service being unavailable does not establish whether the app builds or passes
+tests; maintainer approval is still required.
 
 ## Code style
 
