@@ -57,6 +57,21 @@ struct WeeklyCardRenderHarness {
                 }
             }
         }
+        let currencies: [(DisplayCurrency, Double, String)] = [
+            (.usd, 1, "de_DE"), (.cny, 7, "zh_CN"), (.eur, 0.9, "de_DE"),
+            (.gbp, 0.8, "en_GB"), (.jpy, 150, "ja_JP"), (.krw, 1_300, "ko_KR"),
+            (.cad, 1.3, "fr_CA"), (.aud, 1.5, "en_AU"), (.chf, 0.85, "de_CH"),
+            (.sek, 10.5, "sv_SE")
+        ]
+        for (currency, rate, locale) in currencies {
+            let quote = CurrencyQuote(currency: currency, usdRate: rate, locale: Locale(identifier: locale))
+            for format in WeeklyCardFormat.allCases {
+                let data = try WeeklyCardExporter.png(snapshot: snapshot, format: format,
+                                                      signature: "@yourname", quote: quote)
+                try verify(data, format: format, tier: snapshot.tier(for: .apiValue, quote: quote))
+                try data.write(to: destination.appendingPathComponent("currency-\(currency.rawValue)-\(locale)-\(format.rawValue).png"))
+            }
+        }
         for (label, amount) in [("empty", 0), ("tiny", 1), ("huge", 99_999_999_999)] {
             let snapshot = WeeklyUsageSnapshot.make(buckets: [.grok: [DailyTokenBucket(dayStart: interval.start, tokens: amount, billableTokens: amount,
                                                                                       dollars: Double(amount) / 100_000, unpricedTokens: 0)]],
@@ -113,7 +128,7 @@ struct WeeklyCardRenderHarness {
         guard clipboard.data(forType: .png) == data, clipboard.data(forType: .tiff) != nil else {
             throw WeeklyCardExportError.clipboardFailed
         }
-        print("PASS: 48 PNG renders, earned color pixels, exact output dimensions, sharing image/caption, PNG/TIFF clipboard round trip")
+        print("PASS: 78 PNG renders, earned color pixels, exact output dimensions, sharing image/caption, PNG/TIFF clipboard round trip")
         print(destination.path)
     }
 
