@@ -56,6 +56,12 @@ struct EnterpriseUsageTests {
 
         let weeklyFallback = AppUsage(fiveHour: failure, weekly: limited, reportedWindows: [.fiveHour, .weekly])
         expect(weeklyFallback.peekWindowKind == .weekly, "unavailable 5h reading still falls back to real weekly reading")
+        let response = try! JSONSerialization.jsonObject(with: Data(#"{"extra_usage":{"is_enabled":true,"used_credits":47,"monthly_limit":1600}}"#.utf8)) as! [String: Any]
+        let noPlan = UsageFetcher.parseClaudeUsageResponse(response, plan: nil)
+        expect(noPlan.visibleWindows == [.monthly] && noPlan.monthly.usedAmount == 0.47,
+               "enabled credits survive missing optional plan metadata")
+        expect(UsageFetcher.parseClaudeUsageResponse(response, plan: "max").monthly.hasReading,
+               "response schema determines available credits")
         let reset = Date().addingTimeInterval(3600)
         let monthly = AlertDecision.WindowInput(provider: .claude, visible: true,
             window: WindowUsage(usedPercent: 0.98, resetAt: reset, error: nil), windowKind: .monthly)
@@ -73,6 +79,24 @@ struct EnterpriseUsageTests {
             window: WindowUsage(usedPercent: 0.1, resetAt: reset.addingTimeInterval(300), error: nil))
         let otherReset = AlertDecision.evaluateCrossings(previous: first.next, inputs: [monthly, hourlyReset], warning: 80, critical: 95, warmedUp: true)
         expect(otherReset.pulse == nil, "5h reset does not rearm monthly alert")
+
+        let noBoundary = AlertDecision.WindowInput(provider: .claude, visible: true,
+            window: WindowUsage(usedPercent: 0.98, resetAt: nil, error: nil), windowKind: .monthly)
+        let withoutReset = AlertDecision.evaluateCrossings(previous: [], inputs: [noBoundary], warning: 80, critical: 95, warmedUp: true)
+        expect(withoutReset.pulse?.severity == .critical, "monthly threshold alerts without a fabricated reset")
+        let repeatedWithoutReset = AlertDecision.evaluateCrossings(previous: withoutReset.next, inputs: [noBoundary], warning: 80, critical: 95, warmedUp: true)
+        expect(repeatedWithoutReset.pulse == nil, "boundaryless monthly alert fires once")
+        let failedMonthly = AlertDecision.WindowInput(provider: .claude, visible: true, window: failure, windowKind: .monthly)
+        let failureAfterCrossing = AlertDecision.evaluateCrossings(previous: withoutReset.next, inputs: [failedMonthly], warning: 80, critical: 95, warmedUp: true)
+        expect(failureAfterCrossing.next == withoutReset.next, "failed monthly poll cannot rearm alerts")
+        let lowMonthly = AlertDecision.WindowInput(provider: .claude, visible: true,
+            window: WindowUsage(usedPercent: 0.1, resetAt: nil, error: nil), windowKind: .monthly)
+        let observedReset = AlertDecision.evaluateCrossings(previous: withoutReset.next, inputs: [lowMonthly], warning: 80, critical: 95, warmedUp: true)
+        expect(observedReset.next.isEmpty, "observed lower monthly usage rearms the next crossing")
+        let nextCrossing = AlertDecision.evaluateCrossings(previous: observedReset.next, inputs: [noBoundary], warning: 80, critical: 95, warmedUp: true)
+        expect(nextCrossing.pulse != nil, "next observed monthly threshold crossing can alert")
+        expect(AlertDecision.evaluateCrossings(previous: [], inputs: [noBoundary], warning: 80, critical: 95, warmedUp: false).pulse == nil,
+               "startup warmup still suppresses monthly pulses")
 
         let history = UsageHistoryStore.shared
         let key = "enterprise-test-\(UUID().uuidString)"

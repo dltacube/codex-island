@@ -61,7 +61,7 @@ final class AlertEngine: ObservableObject {
     struct CrossingKey: Hashable {
         let provider: Provider
         let threshold: Threshold
-        let resetAt: Date
+        let resetAt: Date?
         var windowKind: UsageWindow = .fiveHour
     }
 
@@ -271,14 +271,19 @@ enum AlertDecision {
     ) -> CrossingsEvalResult {
         var next = previous
 
-        // Prune keys whose resetAt is stale relative to the current window.
-        // A `nil` resetAt means we have no current boundary; in that case
-        // we can't evaluate crossings for that provider, so leave its keys
-        // alone (they'll get pruned once a real resetAt arrives).
         for input in inputs {
-            guard let currentReset = input.window.resetAt else { continue }
-            next = next.filter { key in
-                key.provider != input.provider || key.windowKind != input.windowKind || key.resetAt == currentReset
+            if let currentReset = input.window.resetAt {
+                next = next.filter { key in
+                    key.provider != input.provider || key.windowKind != input.windowKind || key.resetAt == currentReset
+                }
+            } else if input.windowKind == .monthly, input.window.hasPercentageReading {
+                // Without a provider boundary, rearm only after an observed
+                // reading falls below the threshold. Failed polls cannot rearm.
+                next = next.filter { key in
+                    if key.provider != input.provider || key.windowKind != input.windowKind { return true }
+                    let bound = key.threshold == .warning ? warning : critical
+                    return key.resetAt == nil && input.window.percentInt >= bound
+                }
             }
         }
 
@@ -288,7 +293,8 @@ enum AlertDecision {
 
         for input in inputs {
             guard input.visible else { continue }
-            guard let resetAt = input.window.resetAt else { continue }
+            let resetAt = input.window.resetAt
+            guard resetAt != nil || input.windowKind == .monthly else { continue }
             if !input.window.hasPercentageReading { continue }
             let pct = input.window.percentInt
 

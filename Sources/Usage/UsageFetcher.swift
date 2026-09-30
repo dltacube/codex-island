@@ -209,27 +209,24 @@ enum UsageFetcher {
                    let type = err["type"] as? String, type == "rate_limit_error" {
                     return .rateLimited
                 }
-                let fiveHour = parseClaudeWindow(obj["five_hour"])
-                let weekly = parseClaudeWindow(obj["seven_day"])
-                let monthly = plan?.lowercased() == "enterprise"
-                    ? parseClaudeEnterpriseCredits(obj["extra_usage"])
-                    : nil
-                var reported: [UsageWindow] = []
-                if !fiveHour.isUnreported { reported.append(.fiveHour) }
-                if !weekly.isUnreported { reported.append(.weekly) }
-                if monthly != nil { reported.append(.monthly) }
-                return .success(AppUsage(
-                    fiveHour: fiveHour,
-                    weekly: weekly,
-                    monthly: monthly ?? .unknown,
-                    plan: plan,
-                    reportedWindows: reported
-                ))
+                return .success(parseClaudeUsageResponse(obj, plan: plan))
             }
             return .otherError("parse error")
         } catch {
             return .otherError(error.localizedDescription)
         }
+    }
+
+    static func parseClaudeUsageResponse(_ object: [String: Any], plan: String?) -> AppUsage {
+        let fiveHour = parseClaudeWindow(object["five_hour"])
+        let weekly = parseClaudeWindow(object["seven_day"])
+        let monthly = parseClaudeEnterpriseCredits(object["extra_usage"])
+        var reported: [UsageWindow] = []
+        if !fiveHour.isUnreported { reported.append(.fiveHour) }
+        if !weekly.isUnreported { reported.append(.weekly) }
+        if monthly != nil { reported.append(.monthly) }
+        return AppUsage(fiveHour: fiveHour, weekly: weekly, monthly: monthly ?? .unknown,
+                        plan: plan, reportedWindows: reported)
     }
 
     private static func parseClaudeWindow(_ obj: Any?) -> WindowUsage {
