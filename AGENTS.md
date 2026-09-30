@@ -31,8 +31,10 @@ Read the applicable flow before reviewing:
   null is unlimited, and numeric zero is exhausted. Unlimited amounts must not
   become a fake 0% quota. Monthly alerts and reset boundaries are independent
   of five-hour/week alerts; missing reset metadata must not repeat a crossing.
-- Quota charts, peek, and alerts must agree on the selected provider and metric.
-  Codex usage and reset-credit requests must carry the selected account identity.
+- Preserve provider and metric identity across charts, peek, and alerts. For
+  configurable providers, peek/alerts follow the selected primary metric; Claude
+  monthly alerts still run independently. Codex usage and reset-credit requests
+  must carry the selected account identity.
   Async completions from a deselected provider or old account must not overwrite
   the current connection. Account-specific quota history/preferences must not
   bleed across accounts; local cost history can intentionally include multiple
@@ -70,8 +72,9 @@ Read the applicable flow before reviewing:
   provider count, narrow peek values, and expanded content height when affected.
   Hit-test bounds must follow the rendered panel through opening, page changes,
   and interrupted animations. Hover/idle changes must preserve click access,
-  collapse behavior, and Low Power behavior rather than leave hidden polling or
-  animation work running. Use relevant existing layout/render fixtures;
+  collapse behavior, and Low Power behavior. Flag newly introduced busy polling
+  or continuous offscreen animation; normal scheduled quota/local-usage refresh
+  while collapsed is expected. Use relevant existing layout/render fixtures;
   fixture success alone does not establish live display or VoiceOver behavior.
 - Session/log features must keep reads local and avoid copying prompts,
   responses, tool payloads, or credentials into persistent usage history,
