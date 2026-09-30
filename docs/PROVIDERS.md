@@ -25,6 +25,9 @@ of the five-hour and weekly windows. The app converts cent amounts to currency
 units, keeps missing spend distinct from zero, and shows unlimited spend as an
 amount rather than a quota percentage. Credit amounts use the API currency.
 
+A missing `monthly_limit` is unknown; only an explicit `null` represents
+unlimited credits. Incomplete credit readings are omitted.
+
 Monthly credit limits are evaluated independently for threshold alerts. Reset
 countdowns use only provider-supplied boundaries. Percentage-only history remains
 available to charts but is not used to seed monthly spend after relaunch. A failed
