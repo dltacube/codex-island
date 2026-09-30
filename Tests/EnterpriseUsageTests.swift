@@ -30,6 +30,8 @@ struct EnterpriseUsageTests {
         expect(parse(#"{"is_enabled":true,"monthly_limit":1600}"#) == nil, "missing spend is not zero")
         expect(parse(#"{"is_enabled":true,"used_credits":-1}"#) == nil, "negative spend rejected")
         expect(parse(#"{"is_enabled":true,"used_credits":1,"monthly_limit":-1}"#) == nil, "negative limit rejected")
+        expect(parse(#"{"is_enabled":true,"used_credits":47}"#) == nil, "missing monthly limit is unknown rather than unlimited")
+        expect(parse(#"{"is_enabled":true,"used_credits":0}"#) == nil, "zero spend with missing limit is not an unlimited claim")
         let unlimited = parse(#"{"is_enabled":true,"used_credits":47,"monthly_limit":null}"#)!
         expect(unlimited.hasReading && !unlimited.hasPercentageReading, "unlimited spend has no fabricated percentage")
         expect(unlimited.isUnlimitedAmount, "unlimited amount identified")

@@ -258,8 +258,9 @@ enum UsageFetcher {
         // Claude CLI treats these API values as cents (for example, 1600 is
         // displayed as $16.00). Keep raw cents for utilization, then store
         // major currency units for the app's currency formatter.
-        let limitCents = details["monthly_limit"] as? Double
-        if let rawLimit = details["monthly_limit"], !(rawLimit is NSNull), limitCents == nil { return nil }
+        guard let rawLimit = details["monthly_limit"] else { return nil }
+        let limitCents = rawLimit as? Double
+        if !(rawLimit is NSNull), limitCents == nil { return nil }
         guard limitCents.map({ $0.isFinite && $0 >= 0 }) ?? true else { return nil }
         let reportedUtilization = (details["utilization"] as? Double).map { $0 / 100 }
         let utilization = reportedUtilization
