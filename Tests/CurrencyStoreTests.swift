@@ -22,7 +22,22 @@ struct CurrencyStoreTests {
         let germanEuro = CurrencyQuote(currency: .eur, usdRate: 1, locale: Locale(identifier: "de_DE"))
         precondition(germanEuro.formatted(usd: 0.001) == "<0,01 €")
         precondition(germanEuro.formatted(usd: 999.999) == "999,99 €")
-        precondition(germanEuro.milestoneLabel(amount: 1_000_000) == "1 Mio. €")
+        precondition(germanEuro.milestoneLabel(amount: 1_000_000) == "1M €")
+        let badges: [(DisplayCurrency, String, String)] = [
+            (.krw, "ko_KR", "₩1M"), (.cny, "zh_CN", "¥1M"), (.jpy, "ja_JP", "¥1M"),
+            (.eur, "de_DE", "1M €"), (.sek, "sv_SE", "1M kr"), (.cad, "fr_CA", "1M $")
+        ]
+        for (currency, identifier, expected) in badges {
+            let quote = CurrencyQuote(currency: currency, usdRate: 1, locale: Locale(identifier: identifier))
+            precondition(quote.milestoneLabel(amount: 1_000_000) == expected,
+                         "Club abbreviations stay K/M/B in \(identifier)")
+        }
+        let wonBadge = CurrencyQuote(currency: .krw, usdRate: 1, locale: Locale(identifier: "ko_KR"))
+        for (amount, label) in [(100.0, "₩100"), (1_000, "₩1K"), (10_000, "₩10K"),
+                               (100_000, "₩100K"), (1_000_000, "₩1M"), (10_000_000, "₩10M"),
+                               (100_000_000, "₩100M"), (1_000_000_000, "₩1B")] {
+            precondition(wonBadge.milestoneLabel(amount: amount) == label)
+        }
         let canadianBadge = CurrencyQuote(currency: .cad, usdRate: 1, locale: Locale(identifier: "fr_CA"))
             .milestoneLabel(amount: 1_000_000)
         precondition(canadianBadge.contains("M") && canadianBadge.hasSuffix("$") && !canadianBadge.hasPrefix("$"))

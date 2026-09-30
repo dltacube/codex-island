@@ -91,14 +91,12 @@ struct CurrencyQuote {
     func milestoneLabel(amount: Double) -> String {
         let style = FloatingPointFormatStyle<Double>.Currency(code: currency.rawValue)
             .locale(locale).precision(.fractionLength(0))
-        if #available(macOS 15, *) {
-            return amount.formatted(style.notation(.compactName))
-        }
         var formatted = amount.formatted(style.attributed)
         let numbers = formatted.runs.filter { $0.numberPart != nil }
         guard let first = numbers.first, let last = numbers.last else { return String(formatted.characters) }
+        // Club abbreviations stay K/M/B while currency placement follows the locale.
         let compact = amount.formatted(FloatingPointFormatStyle<Double>.number
-            .locale(locale).precision(.fractionLength(0)).notation(.compactName))
+            .locale(Locale(identifier: "en_US")).precision(.fractionLength(0)).notation(.compactName))
         formatted.replaceSubrange(first.range.lowerBound..<last.range.upperBound, with: AttributedString(compact))
         return String(formatted.characters)
     }

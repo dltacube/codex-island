@@ -302,7 +302,7 @@ struct WeeklyUsageSnapshotTests {
         let euroQuote = CurrencyQuote(currency: .eur, usdRate: 0.9)
         let germanQuote = CurrencyQuote(currency: .eur, usdRate: 0.9, locale: Locale(identifier: "de_DE"))
         expect(priced.shareText(metric: .apiValue, quote: germanQuote).contains("1.152,05 €")
-            && priced.valueMilestone(for: germanQuote)?.label(in: .eur, locale: germanQuote.locale) == "1000 €",
+            && priced.valueMilestone(for: germanQuote)?.label(in: .eur, locale: germanQuote.locale) == "1K €",
                "localized caption and badge keep the currency after the amount")
         let germanDollars = CurrencyQuote(currency: .usd, usdRate: 1, locale: Locale(identifier: "de_DE"))
         expect(priced.shareText(metric: .apiValue, quote: germanDollars).contains("1.280,06 $"),
