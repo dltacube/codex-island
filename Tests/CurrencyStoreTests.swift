@@ -115,7 +115,6 @@ struct CurrencyStoreTests {
         precondition(store.quote(for: .sek)?.converted(usd: 100) == 1050)
         precondition(store.displaySymbol == "SEK " && !store.displayUsesWholeUnits)
         let swedish = Locale(identifier: "sv_SE")
-        let english = Locale(identifier: "en_US")
         precondition(store.formatted(usd: 1, compact: false, locale: swedish) == "10,50 kr")
         precondition(store.formatted(usd: 1, compact: false, includesSymbol: false, locale: swedish) == "10,50")
         precondition(store.formatted(usd: 1, compact: false, locale: english) == "SEK 10.50")
