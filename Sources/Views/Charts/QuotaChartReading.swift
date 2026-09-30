@@ -65,7 +65,7 @@ struct QuotaAccessibility: ViewModifier {
         content
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(reading.amount.map {
-                L10n.tr("%@, %@ spent, unlimited", reading.label, $0)
+                L10n.tr("%@, %@ credits used, unlimited", reading.label, $0)
             } ?? reading.value.map {
                 L10n.tr("%@, %d%%", reading.label, DisplayNumber.percent($0))
             } ?? L10n.tr("%@, no reading", reading.label))
