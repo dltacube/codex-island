@@ -140,7 +140,7 @@ struct CostTile: View {
 
     private var dollarHero: some View {
         HStack(alignment: .firstTextBaseline, spacing: 1) {
-            Text(currencyStore.displaySymbol)
+            Text(currencyStore.displayPrefix)
                 .font(Typography.unit)
                 .foregroundStyle(.white.opacity(0.4))
             CountUpDollar(
@@ -149,6 +149,11 @@ struct CostTile: View {
                 color: color,
                 glowOpacity: glowOpacity
             )
+            if !currencyStore.displaySuffix.isEmpty {
+                Text(currencyStore.displaySuffix)
+                    .font(Typography.unit)
+                    .foregroundStyle(.white.opacity(0.4))
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -270,13 +275,18 @@ struct CostTile: View {
             // sparkline gets the full cell but the user still has the
             // numeric anchor they can read at a glance.
             HStack(alignment: .firstTextBaseline, spacing: 1) {
-                Text(currencyStore.displaySymbol)
+                Text(currencyStore.displayPrefix)
                     .font(Typography.micro)
                     .foregroundStyle(.white.opacity(0.5))
                 Text(formattedDollarsCompact)
                     .font(Typography.bodyNumber)
                     .foregroundStyle(color)
                     .shadow(color: color.opacity(0.7), radius: 3)
+                if !currencyStore.displaySuffix.isEmpty {
+                    Text(currencyStore.displaySuffix)
+                        .font(Typography.micro)
+                        .foregroundStyle(.white.opacity(0.5))
+                }
             }
         }
     }

@@ -13,6 +13,27 @@ struct CurrencyStoreTests {
         {"result":"success","base_code":"USD","time_last_update_unix":1700000000,
          "rates":{"USD":1,"EUR":0.9,"GBP":0.8,"CNY":7,"JPY":150,"KRW":1300,"CAD":1.3,"AUD":1.5,"CHF":0.85,"SEK":10.5}}
         """.utf8)
+        let oldCache: [String: Any] = [
+            "rates": ["USD": 1, "EUR": 0.9, "GBP": 0.8, "CNY": 7, "JPY": 150,
+                      "KRW": 1300, "CAD": 1.3, "AUD": 1.5, "CHF": 0.85],
+            "fetchedAt": Date().timeIntervalSinceReferenceDate, "sourceDate": "2026-09-29"
+        ]
+        defaults.set(try JSONSerialization.data(withJSONObject: oldCache), forKey: "MacIsland.currencyRates.v2")
+        defaults.set("EUR", forKey: "MacIsland.displayCurrency")
+        let upgraded = CurrencyStore(defaults: defaults)
+        await upgraded.refreshIfNeeded(force: true) { _ in throw URLError(.notConnectedToInternet) }
+        precondition(upgraded.lastUpdated != nil && upgraded.converted(usd: 100) == 90)
+        precondition(upgraded.displayCurrency == .eur)
+        upgraded.currency = .sek
+        precondition(upgraded.displayCurrency == .usd && upgraded.converted(usd: 100) == 100)
+        upgraded.currency = .gbp
+        precondition(upgraded.displayCurrency == .gbp && upgraded.converted(usd: 100) == 80)
+        var invalidCache = oldCache
+        invalidCache["rates"] = ["USD": 1, "EUR": -0.9]
+        defaults.set(try JSONSerialization.data(withJSONObject: invalidCache), forKey: "MacIsland.currencyRates.v2")
+        precondition(CurrencyStore(defaults: defaults).lastUpdated == nil)
+        defaults.removeObject(forKey: "MacIsland.currencyRates.v2")
+        defaults.removeObject(forKey: "MacIsland.displayCurrency")
         let store = CurrencyStore(defaults: defaults)
         let now = Date()
         store.currency = .eur
@@ -61,6 +82,13 @@ struct CurrencyStoreTests {
         store.currency = .sek
         precondition(store.displayCurrency == .sek && store.converted(usd: 100) == 1050)
         precondition(store.displaySymbol == "SEK " && !store.displayUsesWholeUnits)
+        let swedish = Locale(identifier: "sv_SE")
+        let english = Locale(identifier: "en_US")
+        precondition(store.formatted(usd: 1, compact: false, locale: swedish) == "10,50 kr")
+        precondition(store.formatted(usd: 1, compact: false, includesSymbol: false, locale: swedish) == "10,50")
+        precondition(store.formatted(usd: 1, compact: false, locale: english) == "SEK 10.50")
+        precondition(DisplayCurrency.sek.affixes(locale: swedish).prefix.isEmpty)
+        precondition(DisplayCurrency.sek.affixes(locale: swedish).suffix == " kr")
         store.currency = .usd
         precondition(store.usdRate == 1 && store.displaySymbol == "$")
         print("PASS currency switching, single-flight refresh, expiry, offline retention, validation, persistence, manual refresh")
