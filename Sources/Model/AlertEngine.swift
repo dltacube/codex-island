@@ -273,16 +273,23 @@ enum AlertDecision {
 
         for input in inputs {
             if let currentReset = input.window.resetAt {
-                next = next.filter { key in
-                    key.provider != input.provider || key.windowKind != input.windowKind || key.resetAt == currentReset
-                }
+                next = Set(next.compactMap { key in
+                    guard key.provider == input.provider, key.windowKind == input.windowKind else { return key }
+                    if input.windowKind == .monthly, key.resetAt == nil {
+                        let bound = key.threshold == .warning ? warning : critical
+                        guard input.window.hasPercentageReading, input.window.percentInt >= bound else { return nil }
+                        return AlertEngine.CrossingKey(provider: key.provider, threshold: key.threshold,
+                                                       resetAt: currentReset, windowKind: key.windowKind)
+                    }
+                    return key.resetAt == currentReset ? key : nil
+                })
             } else if input.windowKind == .monthly, input.window.hasPercentageReading {
                 // Without a provider boundary, rearm only after an observed
                 // reading falls below the threshold. Failed polls cannot rearm.
                 next = next.filter { key in
                     if key.provider != input.provider || key.windowKind != input.windowKind { return true }
                     let bound = key.threshold == .warning ? warning : critical
-                    return key.resetAt == nil && input.window.percentInt >= bound
+                    return input.window.percentInt >= bound
                 }
             }
         }
@@ -307,7 +314,10 @@ enum AlertDecision {
                     resetAt: resetAt,
                     windowKind: input.windowKind
                 )
-                if !next.contains(key) {
+                let alreadyCrossed = resetAt == nil
+                    ? next.contains { $0.provider == input.provider && $0.windowKind == input.windowKind && $0.threshold == threshold }
+                    : next.contains(key)
+                if !alreadyCrossed {
                     next.insert(key)
                     newCrossings.append(key)
                 }

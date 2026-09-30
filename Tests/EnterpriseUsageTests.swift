@@ -93,6 +93,14 @@ struct EnterpriseUsageTests {
             window: WindowUsage(usedPercent: 0.98, resetAt: nil, error: nil), windowKind: .monthly)
         let withoutReset = AlertDecision.evaluateCrossings(previous: [], inputs: [noBoundary], warning: 80, critical: 95, warmedUp: true)
         expect(withoutReset.pulse?.severity == .critical, "monthly threshold alerts without a fabricated reset")
+        let lostReset = AlertDecision.evaluateCrossings(previous: first.next, inputs: [noBoundary], warning: 80, critical: 95, warmedUp: true)
+        expect(lostReset.pulse == nil, "omitted reset metadata does not repeat a monthly alert")
+        let restoredReset = AlertDecision.evaluateCrossings(previous: withoutReset.next, inputs: [monthly], warning: 80, critical: 95, warmedUp: true)
+        expect(restoredReset.pulse == nil, "newly available reset metadata preserves an observed crossing")
+        let nextPeriod = AlertDecision.WindowInput(provider: .claude, visible: true,
+            window: WindowUsage(usedPercent: 0.98, resetAt: reset.addingTimeInterval(3600), error: nil), windowKind: .monthly)
+        expect(AlertDecision.evaluateCrossings(previous: restoredReset.next, inputs: [nextPeriod], warning: 80, critical: 95, warmedUp: true).pulse != nil,
+               "a changed provider reset boundary still identifies a new monthly period")
         let repeatedWithoutReset = AlertDecision.evaluateCrossings(previous: withoutReset.next, inputs: [noBoundary], warning: 80, critical: 95, warmedUp: true)
         expect(repeatedWithoutReset.pulse == nil, "boundaryless monthly alert fires once")
         let failedMonthly = AlertDecision.WindowInput(provider: .claude, visible: true, window: failure, windowKind: .monthly)
