@@ -24,10 +24,10 @@ struct PagedContent: View {
                                position: CGFloat(screenPref.screen.pageIndex),
                                feedbackOffset: peekOffset + bumpOffset) {
             UsageView()
-                .padding(.vertical, 24)
+                .padding(.vertical, IslandPanelLayout.dataVerticalInset)
                 .accessibilityHidden(screenPref.screen != .usage)
             CostView()
-                .padding(.vertical, 24)
+                .padding(.vertical, IslandPanelLayout.dataVerticalInset)
                 .accessibilityHidden(screenPref.screen != .cost)
             OverviewView()
                 .accessibilityHidden(screenPref.screen != .overview)

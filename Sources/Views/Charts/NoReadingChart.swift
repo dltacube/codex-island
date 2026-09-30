@@ -10,7 +10,7 @@ import SwiftUI
 /// which is exactly backwards. This draws the empty track and an em dash
 /// instead, so the tile reads as absent rather than measured.
 ///
-/// Geometry matches `BarChart` (8pt spacing, 8pt body, `ChartFoot`) so the
+/// Geometry matches the stepped tile so the
 /// swap in and out doesn't shift the panel's fixed 188pt height.
 struct NoReadingChart: View {
     let label: String
@@ -24,15 +24,14 @@ struct NoReadingChart: View {
                     .foregroundStyle(.white.opacity(0.6))
                     .textCase(.lowercase)
                 Spacer()
-                Text(verbatim: "-")
-                    .font(Typography.quotaValue)
-                    .foregroundStyle(.white.opacity(0.3))
+                QuotaValue(reading: QuotaChartReading(id: label, label: label, value: nil, caption: sub),
+                           mode: UsageDisplayModeStore.shared.mode, size: 32, weight: .semibold)
             }
             // Empty track, no fill: the scale is still there, we just have
             // nothing to put on it.
-            Capsule()
+            RoundedRectangle(cornerRadius: 1)
                 .fill(.white.opacity(0.12))
-                .frame(height: 6)
+                .frame(height: 16)
             ChartFoot(caption: sub)
         }
     }

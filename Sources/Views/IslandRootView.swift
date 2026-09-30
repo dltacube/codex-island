@@ -103,8 +103,8 @@ struct IslandRootView: View {
                 .contentShape(IslandShape())
                 .onTapGesture {
                     // Cmd-click cycles the visualization style of whichever
-                    // page is active. Usage rotates Ring/Bar/Stepped/
-                    // Spark; cost rotates USD/VALUE/TOKENS/TREND. Overview
+                    // page is active. Usage rotates Rails/Ring/Grid/
+                    // History/Stepped; cost rotates USD/VALUE/TOKENS/TREND. Overview
                     // is fixed to year-to-date.
                     if NSEvent.modifierFlags.contains(.command) {
                         switch ScreenPref.shared.screen {

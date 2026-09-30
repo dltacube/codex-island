@@ -12,7 +12,7 @@ struct SteppedChart: View {
             ChartHead(value: value, label: label)
             HStack(spacing: 3) {
                 let segments = 20
-                let filled = min(100, max(0, value)) / 100 * Double(segments)
+                let filled = Double(DisplayNumber.percent(value)) / 100 * Double(segments)
                 ForEach(0..<segments, id: \.self) { index in
                     GeometryReader { geometry in
                         ZStack(alignment: .leading) {
@@ -24,7 +24,7 @@ struct SteppedChart: View {
                     }
                 }
             }
-            .frame(height: 12)
+            .frame(height: 16)
             .animation(reduceMotion ? nil : .strongEaseOut, value: value)
             .accessibilityHidden(true)
             ChartFoot(caption: sub)

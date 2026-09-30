@@ -52,7 +52,7 @@ struct CostTile: View {
     @ObservedObject private var tokenMode = TokenCountModeStore.shared
     @ObservedObject private var currencyStore = CurrencyStore.shared
 
-    /// Locked to match `ChartTile.tileHeight` so swipe transitions don't
+    /// Locked to match the usage chart height so swipe transitions don't
     /// reflow the panel.
     private static let tileHeight = IslandPanelLayout.tileHeight
 
@@ -105,8 +105,8 @@ struct CostTile: View {
 
     private var spokenValue: String {
         if stylePref.style == .multi {
-            let plan = subscriptionUSD == nil ? "unavailable" : formatBarDollars(planAmount)
-            let you = costUnavailable ? "unavailable" : formatBarDollars(window.dollars)
+            let plan = subscriptionUSD == nil ? "unavailable" : currencyStore.formatted(usd: planAmount, compact: false)
+            let you = costUnavailable ? "unavailable" : currencyStore.formatted(usd: window.dollars, compact: false)
             return L10n.tr("%@ %@ versus you %@", planLabel ?? L10n.tr("Plan"), plan, you)
         }
         if let error = window.error { return error }
@@ -115,15 +115,15 @@ struct CostTile: View {
         }
         switch stylePref.style {
         case .dollar:
-            return currencyStore.formatted(usd: window.dollars)
+            return currencyStore.formatted(usd: window.dollars, compact: false)
         case .multi:
             let plan = formatBarDollars(planAmount)
             let you = formatBarDollars(window.dollars)
             return L10n.tr("%@ %@ versus you %@", planLabel ?? L10n.tr("Plan"), plan, you)
         case .tokens:
-            return L10n.tr("%@%@ tokens", tokensValue, tokensUnit)
+            return L10n.tr("%@%@ tokens", displayedTokens.formatted(.number.locale(L10n.locale)), "")
         case .spark:
-            return L10n.tr("%@ cumulative", currencyStore.formatted(usd: window.dollars))
+            return L10n.tr("%@ cumulative", currencyStore.formatted(usd: window.dollars, compact: false))
         }
     }
 
@@ -140,11 +140,12 @@ struct CostTile: View {
                     wholeUnits: currencyStore.displayUsesWholeUnits,
                     color: color,
                     glowOpacity: 0,
-                    font: .system(size: 32, weight: .semibold, design: .monospaced)
+                    font: .system(size: 36, weight: .semibold, design: .monospaced)
                 )
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .help(currencyStore.formatted(usd: window.dollars, compact: false))
     }
 
     /// Side-by-side bar chart: left bar is the plan price (white, subtle),
@@ -161,7 +162,7 @@ struct CostTile: View {
         // Sized so barColumn's natural height (14 dollar text + 3 + bar + 3
         // + 13 label text) fits inside the cell's hero slot without the bars
         // overflowing upward into the "Today" header.
-        let maxBarHeight: CGFloat = 36
+        let maxBarHeight: CGFloat = 52
 
         return HStack(alignment: .bottom, spacing: 14) {
             Spacer(minLength: 0)
@@ -224,6 +225,7 @@ struct CostTile: View {
                 .font(Typography.bodyNumber)
                 .foregroundStyle(isYou ? color : .white.opacity(0.78))
                 .lineLimit(1)
+                .help(currencyStore.formatted(usd: amount, compact: false))
             ZStack(alignment: .bottom) {
                 Color.clear.frame(width: 24, height: maxBarHeight)
                 RoundedRectangle(cornerRadius: 3)
@@ -242,10 +244,9 @@ struct CostTile: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(tokensValue)
-                    .font(.system(size: 32, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 36, weight: .semibold, design: .monospaced))
                     .foregroundStyle(color)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
                 Text(tokensUnit)
                     .font(Typography.unit)
                     .foregroundStyle(.white.opacity(0.6))
@@ -255,6 +256,7 @@ struct CostTile: View {
                 .foregroundStyle(.white.opacity(0.55))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .help(displayedTokens.formatted(.number.locale(L10n.locale)) + " " + L10n.tr("Tokens"))
     }
 
     private var sparkHero: some View {
@@ -264,14 +266,14 @@ struct CostTile: View {
                     .font(Typography.micro)
                     .foregroundStyle(.white.opacity(0.6))
                 Text(formattedDollarsCompact)
-                    .font(.system(size: 24, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 28, weight: .semibold, design: .monospaced))
                     .foregroundStyle(color)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
             }
             CostSparkline(series: window.series, color: color)
-                .frame(height: 30)
+                .frame(height: 40)
         }
+        .help(currencyStore.formatted(usd: window.dollars, compact: false))
     }
 
     // MARK: - Derived values
@@ -345,7 +347,7 @@ struct CostTile: View {
     }
 
     private func formatBarDollars(_ v: Double) -> String {
-        currencyStore.formatted(usd: v)
+        currencyStore.formatted(usd: v, abbreviated: true)
     }
 
     /// Honors the user's TokenCountMode setting: `.all` shows wire-level
@@ -359,25 +361,15 @@ struct CostTile: View {
     }
 
     private var tokensValue: String {
-        let n = displayedTokens
-        let v = Double(n)
-        if n < 1_000 { return "\(n)" }
-        if n < 10_000 { return String(format: "%.1f", v / 1_000) }
-        if n < 1_000_000 { return String(format: "%.0f", v / 1_000) }
-        if n < 1_000_000_000 { return String(format: "%.1f", v / 1_000_000) }
-        return String(format: "%.1f", v / 1_000_000_000)
+        DisplayNumber.tokens(displayedTokens, locale: L10n.locale).value
     }
 
     private var tokensUnit: String {
-        let n = displayedTokens
-        if n < 1_000 { return "tok" }
-        if n < 1_000_000 { return "k" }
-        if n < 1_000_000_000 { return "M" }
-        return "B"
+        DisplayNumber.tokens(displayedTokens, locale: L10n.locale).unit
     }
 
     private var formattedDollarsCompact: String {
-        currencyStore.formatted(usd: window.dollars, includesSymbol: false)
+        currencyStore.formatted(usd: window.dollars, includesSymbol: false, abbreviated: true)
     }
 
     /// Compact "↻ 5h" / "↻ 12d" countdown — computed at render time from

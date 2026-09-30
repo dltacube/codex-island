@@ -10,7 +10,8 @@ enum UrgencyColor {
     static let red = Color(red: 230/255, green: 95/255, blue: 95/255)
 
     static func value(_ percent: Double, mode: UsageDisplayMode) -> Color {
-        let usedPercent = mode == .used ? percent : 100 - percent
+        let displayed = DisplayNumber.percent(percent)
+        let usedPercent = mode == .used ? displayed : 100 - displayed
         if usedPercent >= 90 { return red }
         if usedPercent >= 70 { return amber }
         return .white

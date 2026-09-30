@@ -180,118 +180,73 @@ struct UsageChartsRow: View {
     let style: ChartStyle
     let seed: Int
     let metrics: [UsageChartMetric]
-
-    /// Ring is the only style that draws a fixed-size gauge instead of
-    /// stretching to the tile width. Equal tiles center each ring in its own
-    /// half of the column, which leaves the gap between the two rings about
-    /// twice the gaps at the column edges. Lay the rings against equal
-    /// spacers instead so all three gaps match. A window with no reading
-    /// falls back to NoReadingChart, which does stretch, so it keeps tiles.
-    private var ringsHugContent: Bool {
-        style == .ring && metrics.allSatisfy { $0.window.hasReading }
-    }
-
-    var body: some View {
-        HStack(spacing: ringsHugContent ? 0 : 18) {
-            ForEach(Array(metrics.enumerated()), id: \.element.id) { index, metric in
-                if ringsHugContent { Spacer(minLength: 18) }
-                ChartTile(style: style, color: color, labelKey: metric.label,
-                          window: metric.window, seed: seed + index, historyKey: metric.historyKey,
-                          centered: metrics.count == 1)
-                    .frame(maxWidth: ringsHugContent ? nil : .infinity)
-            }
-            if ringsHugContent { Spacer(minLength: 18) }
-        }
-        .frame(maxWidth: metrics.count == 1 ? 240 : .infinity)
-        .frame(maxWidth: .infinity, alignment: .center)
-    }
-}
-
-struct ChartTile: View {
-    let style: ChartStyle
-    let color: Color
-    let labelKey: String
-    let window: WindowUsage
-    let seed: Int
-    let historyKey: String
-    var centered = false
     @ObservedObject private var usageDisplay = UsageDisplayModeStore.shared
     @ObservedObject private var historyStore = UsageHistoryStore.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Locked tile height across all 5 styles so the panel size is
-    /// identical regardless of what the user picks.
-    private static let tileHeight = IslandPanelLayout.tileHeight
+    private var readings: [QuotaChartReading] {
+        metrics.enumerated().map { index, metric in
+            let window = metric.window
+            let mode = usageDisplay.mode
+            let value = window.hasReading ? Double(DisplayNumber.percent(window.displayedFraction(mode: mode) * 100)) : nil
+            let history = style == .telemetry ? historyStore.samples(key: metric.historyKey).map {
+                Double(DisplayNumber.percent(WindowUsage(usedPercent: $0.used, resetAt: nil, error: nil)
+                    .displayedFraction(mode: mode) * 100))
+            } : []
+            return QuotaChartReading(id: metric.id, label: L10n.tr(metric.label), value: value,
+                caption: caption(window), history: value.map {
+                    SparklineSamples.displayed(history: history, value: $0, seed: seed + index,
+                                               isDemo: AppEnvironment.isDemo)
+                } ?? [])
+        }
+    }
 
     var body: some View {
-        // A window with no reading carries `usedPercent: 0` as a struct
-        // default, not a measurement. Feeding that to a chart draws a
-        // confident "0% used" — or a full 100% ring under the `remaining`
-        // toggle — for a window we know nothing about. Gate on `hasReading`
-        // and hand the tile to NoReadingChart instead.
-        let value: Double? = window.hasReading
-            ? window.displayedFraction(mode: usageDisplay.mode) * 100   // 0-100
-            : nil
-        let sub = subCaption()
-        let label = L10n.tr(labelKey)
-
+        let readings = readings
         Group {
-            if let value {
-                switch style {
-                case .ring:    RingChart(value: value, color: color, label: label, sub: sub, centered: centered)
-                case .bar:     BarChart(value: value, color: color, label: label, sub: sub)
-                case .stepped: SteppedChart(value: value, color: color, label: label, sub: sub)
-                case .spark:   SparkChart(value: value, color: color, label: label, sub: sub,
-                                          seed: seed, history: historyPoints())
+            switch style {
+            case .rails:
+                RailsChart(readings: readings, color: color, mode: usageDisplay.mode)
+            case .ring:
+                OrbitChart(readings: readings, color: color, mode: usageDisplay.mode)
+            case .capacity:
+                HStack(spacing: 18) {
+                    ForEach(readings) { reading in
+                        CapacityChart(reading: reading, color: color, mode: usageDisplay.mode,
+                                      compact: readings.count > 1)
+                    }
                 }
-            } else {
-                NoReadingChart(label: label, sub: sub)
+            case .telemetry:
+                TelemetryChart(readings: readings, color: color, mode: usageDisplay.mode)
+            case .stepped:
+                HStack(spacing: 18) {
+                    ForEach(readings) { reading in
+                        Group {
+                            if let value = reading.value {
+                                SteppedChart(value: value, color: color, label: reading.label, sub: reading.caption)
+                            } else {
+                                NoReadingChart(label: reading.label, sub: reading.caption)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .help(reading.caption)
+                        .modifier(QuotaAccessibility(reading: reading, mode: usageDisplay.mode))
+                    }
+                }
             }
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: IslandPanelLayout.tileHeight)
         .id(style)
-        // Blur + scale + opacity, all on the same strong ease-out at 220ms.
-        // The blur masks the geometric mismatch between Ring and Bar so the
-        // crossfade reads as one morph instead of two stacked objects.
-        .transition(.chartSwap.animation(.chartSwap))
-        // Width is decided by UsageChartsRow: tiled styles get an infinite
-        // max there, rings hug their content so the row can space them.
-        .frame(maxHeight: .infinity, alignment: .center)
-        .frame(height: Self.tileHeight)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            value.map { L10n.tr("%@, %d%%", label, Int($0)) }
-                ?? L10n.tr("%@, no reading", label)
-        )
-        .accessibilityValue(subCaption())
+        .transition(reduceMotion ? .opacity : .chartSwap)
+        .animation(reduceMotion ? nil : .chartSwap, value: style)
     }
 
-    /// Recorded readings for this window, mapped through the active
-    /// used/remaining mode into display percent (0-100), oldest first — the
-    /// same transform `value` uses, so the history and the live point agree.
-    private func historyPoints() -> [Double] {
-        let mode = usageDisplay.mode
-        return historyStore.samples(key: historyKey).map { sample in
-            WindowUsage(usedPercent: sample.used, resetAt: nil, error: nil)
-                .displayedFraction(mode: mode) * 100
+    private func caption(_ window: WindowUsage) -> String {
+        if let reset = window.resetAt {
+            return L10n.tr("resets in %@", Duration.compact(max(0, reset.timeIntervalSinceNow)))
         }
-    }
-
-    private func subCaption() -> String {
-        if let r = window.resetAt {
-            let delta = max(0, r.timeIntervalSinceNow)
-            return L10n.tr("resets in %@", Duration.compact(delta))
-        }
-        // "no data" is our internal sentinel for "API returned null for this
-        // window" — most commonly a brand-new 5h period before the first
-        // OAuth call lands. Hide it so the tile reads as a passive
-        // window-context cue (the "5h"/"week" header label communicates the
-        // window type) instead of looking broken. Real errors still surface.
-        // A terminal auth failure is handled by ReauthState (which replaces
-        // the tiles entirely), so any error reaching a tile here is a genuine
-        // per-window caption worth showing verbatim.
-        if let err = window.error, err != "no data" {
-            return err
-        }
+        if let error = window.error, error != "no data" { return error }
         return ""
     }
-
 }

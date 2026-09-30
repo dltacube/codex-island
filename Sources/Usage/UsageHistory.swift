@@ -8,7 +8,7 @@ struct UsageSample: Codable {
     let used: Double
 }
 
-/// Records the usage percentages the app already polls so the SparkChart can
+/// Records the usage percentages the app already polls so the history chart can
 /// plot the user's real trajectory instead of a synthesized curve. Neither
 /// provider exposes a usage time-series, but we sample one ourselves on every
 /// successful refresh and persist it across launches. A failed poll, a

@@ -12,17 +12,9 @@ struct ChartHead: View {
                 .font(Typography.label)
                 .foregroundStyle(.white.opacity(0.6))
             Spacer(minLength: 4)
-            HStack(alignment: .firstTextBaseline, spacing: 1) {
-                Text("\(Int(value))")
-                    .font(Typography.quotaValue)
-                    .foregroundStyle(UrgencyColor.value(value, mode: UsageDisplayModeStore.shared.mode))
-                    .numericTransition(value: value)
-                    .animation(reduceMotion ? nil : .strongEaseOut, value: value)
-                Text("%")
-                    .font(Typography.label)
-                    .foregroundStyle(.white.opacity(0.6))
-            }
-            .fixedSize()
+            QuotaValue(reading: QuotaChartReading(id: label, label: label, value: value, caption: ""),
+                       mode: UsageDisplayModeStore.shared.mode, size: 32, weight: .semibold)
+                .animation(reduceMotion ? nil : .strongEaseOut, value: DisplayNumber.percent(value))
         }
     }
 }

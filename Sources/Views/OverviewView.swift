@@ -63,7 +63,7 @@ private struct OverviewContent: View {
     }
 
     private var overviewContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             summary
 
             ContributionGrid(days: days, selectedDate: $selectedDate)
@@ -103,7 +103,7 @@ private struct OverviewContent: View {
 
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(Self.formatTokens(displayedTokens).value)
-                        .font(Typography.chartValue)
+                        .font(.system(size: 24, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.white)
                     Text(Self.formatTokens(displayedTokens).unit)
                         .font(Typography.unit)
@@ -174,12 +174,7 @@ private struct OverviewContent: View {
     }
 
     fileprivate static func formatTokens(_ n: Int) -> (value: String, unit: String) {
-        let v = Double(n)
-        if n < 1_000 { return ("\(n)", "tok") }
-        if n < 10_000 { return (String(format: "%.1f", v / 1_000), "k") }
-        if n < 1_000_000 { return (String(format: "%.0f", v / 1_000), "k") }
-        if n < 1_000_000_000 { return (String(format: "%.1f", v / 1_000_000), "M") }
-        return (String(format: "%.1f", v / 1_000_000_000), "B")
+        DisplayNumber.tokens(n, locale: L10n.locale)
     }
 
     fileprivate static func formatTokensSpoken(_ n: Int) -> String {

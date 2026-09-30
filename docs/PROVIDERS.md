@@ -5,14 +5,14 @@ occupies the left slot. Picking the provider already in the other slot swaps
 them; the central swap button does the same. Existing Claude/Codex visibility
 preferences migrate automatically, and order persists across launches.
 
-All providers use the same Ring, Bar, Stepped, and Sparkline views,
+All providers use the same Rails, Ring, Grid, History, and Stepped views,
 used/remaining preference, peek pills, and threshold alerts. A provider's data
 selects the metrics; changing providers does not change the chart style.
 
 ## Codex limit windows
 
 Codex charts follow the windows reported by the usage API, not the plan name.
-A weekly-only response displays one compact chart centered in the provider column.
+A weekly-only response displays one quota in the provider column; Rails and History span its width, while Ring uses one empty-center gauge with an adjacent reading.
 Two reported windows retain the 5h/week pair. The discovered window list survives
 failed refreshes, so an offline request cannot bring back a removed 5h tile.
 Zero-percent windows remain visible. Peek and alerts select the same available

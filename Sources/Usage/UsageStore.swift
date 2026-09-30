@@ -229,7 +229,7 @@ final class UsageStore: ObservableObject {
                 self.codexResetCredits = codexResetCredits
             }
 
-            // Record this poll's readings so the SparkChart can plot real
+            // Record this poll's readings so the history chart can plot real
             // history. `record` keeps only non-errored windows, so a failed
             // or rate-limited fetch leaves a gap instead of a flat fake line.
             if let c { UsageHistoryStore.shared.record(provider: .codex, usage: c, at: now) }

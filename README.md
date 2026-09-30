@@ -83,8 +83,8 @@ providers' own usage endpoints.
   only — the latter matches Anthropic's claude.ai stats panel.
 - **Click-through outside the island.** The window ignores mouse events outside
   the visible silhouette so the menu bar and apps underneath still work.
-- **Four chart styles.** Ring, Bar, Stepped, and Sparkline. Pick the
-  default in Settings or Command-click the expanded panel to cycle. Sparkline
+- **Five chart styles.** Rails, Ring, Grid, History, and Stepped. Pick the
+  default in Settings or Command-click the expanded panel to cycle. History
   uses real readings recorded by CodexIsland during successful refreshes.
 - **On-demand refresh.** Click `synced Xs ago` in the panel header to refetch
   immediately; the next scheduled poll re-arms from there.
@@ -193,7 +193,7 @@ the first peek. Opening Settings also triggers a fresh fetch.
   **Usage**, **Cost**, and **Overview**.
 - Move away to collapse it.
 - Command-click the expanded panel to cycle chart styles on the active screen
-  (Usage cycles Ring/Bar/Stepped/Sparkline; Cost cycles
+  (Usage cycles Rails/Ring/Grid/History/Stepped; Cost cycles
   USD/VALUE/TOKENS/TREND; Overview has one calendar view).
 - Click `synced Xs ago` in the panel header to refetch immediately.
 - Click the gear in the lower-left corner of the expanded panel to open
