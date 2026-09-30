@@ -471,7 +471,8 @@ private struct PeekPillOverlay: View {
             contents: contents,
             gaugeProgress: gaugeProgress,
             gaugeHeight: availableHeight ?? 38,
-            showsResetCaption: showsResetCaption
+            showsResetCaption: showsResetCaption,
+            valueWidth: slotWidth
         )
         Group {
             if contents == .reset || contents == .stacked {

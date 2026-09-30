@@ -43,6 +43,14 @@ struct EnterpriseUsageTests {
         let closed = parse(#"{"is_enabled":true,"used_credits":0,"monthly_limit":0}"#)!
         expect(!closed.isUnlimitedAmount && closed.usedPercent == 1, "zero spend cap is exhausted rather than unlimited")
 
+        let en = Locale(identifier: "en_US")
+        expect(UsageCreditDisplay.compactCurrency(1_000, code: "USD", locale: en) == "$1k", "notch abbreviates thousand-dollar spend")
+        expect(UsageCreditDisplay.compactCurrency(12_345.67, code: "USD", locale: en) == "$12.3k", "notch keeps large spend compact")
+        expect(UsageCreditDisplay.compactCurrency(999_950, code: "USD", locale: en) == "$1M", "notch abbreviation promotes rounded unit boundary")
+        expect(UsageCreditDisplay.compactCurrency(0.47, code: "USD", locale: en) == "$0.47", "small credit amount retains exact cents")
+        let swedish = UsageCreditDisplay.compactCurrency(12_345.67, code: "SEK", locale: Locale(identifier: "sv_SE"))
+        expect(swedish.hasPrefix("12,3k") && swedish.hasSuffix("kr"), "notch preserves localized currency placement")
+
         let failure = WindowUsage(usedPercent: 0, resetAt: nil, error: "HTTP 500")
         let failed = AppUsage(fiveHour: failure, weekly: failure, monthly: failure)
         expect(failed.visibleWindows == [.fiveHour, .weekly], "failed Codex cold start has no unsupported monthly tile")
