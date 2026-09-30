@@ -40,17 +40,20 @@ applicable, and risks. Record unavailable checks rather than marking them as
 passed. Metadata-only changes can use targeted validation.
 
 Codex reviews use the official GitHub integration and follow the
-`Code Review Rules` in `AGENTS.md`. This repository is configured to review all
-PRs after each push. Automatic reviews are configured in
+`Code Review Rules` in `AGENTS.md`: provider/account routing, quota and credit
+semantics, CLI-owned credentials, durable usage history, truthful cost estimates,
+native panel behavior, privacy, and Sparkle compatibility. This repository is
+configured to review all PRs after each push. Automatic reviews are configured in
 [Codex settings](https://chatgpt.com/codex/cloud/settings/code-review), separately
 from these templates and the CI workflow. For another repository, enable code
 review, choose whose PRs receive automatic reviews, and set the review trigger.
 Check personal automatic-review preferences when using that mode. See the
 [official setup guide](https://learn.chatgpt.com/docs/third-party/github).
 
-For another review, comment `@codex review` on the PR. Check the reviewed commit
-against the latest head, resolve valid findings, and wait for CI on the latest
-commit before merging. Reviews do not merge or release changes. A review
+For another review, comment `@codex review` on the PR. An existing PR may have
+no review or only a review of an older commit; configuration alone is not proof
+that its current head was reviewed. Check the reviewed commit against the latest
+head, resolve valid findings, and wait for CI on the latest commit before merging. Reviews do not merge or release changes. A review
 service being unavailable does not establish whether the app builds or passes
 tests; maintainer approval is still required.
 
