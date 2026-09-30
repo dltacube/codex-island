@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Five-tile picker for the default chart style. Replaces the
+/// Four-tile picker for the default chart style. Replaces the
 /// undocumented ⌘-click cycle gesture (which still works in the panel).
 /// Each tile renders a tiny preview using the brand terracotta — not
 /// pixel-identical to the live chart, but the same vocabulary so the
@@ -57,15 +57,6 @@ struct ChartStylePicker: View {
                 }
             }
             .frame(width: 28, height: 14)
-        case .numeric:
-            HStack(alignment: .firstTextBaseline, spacing: 1) {
-                Text("35")
-                    .font(Typography.previewNumber)
-                    .foregroundStyle(claude)
-                Text("%")
-                    .font(Typography.micro)
-                    .foregroundStyle(.white.opacity(0.5))
-            }
         case .spark:
             SparkPath()
                 .stroke(claude, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
@@ -78,18 +69,16 @@ struct ChartStylePicker: View {
 /// across the picker, regardless of the user's actual usage trace.
 private struct SparkPath: Shape {
     func path(in rect: CGRect) -> Path {
-        var p = Path()
         let pts: [(CGFloat, CGFloat)] = [
             (0.00, 0.75), (0.16, 0.55),
             (0.34, 0.70), (0.50, 0.30),
             (0.69, 0.45), (0.84, 0.18),
             (1.00, 0.40)
         ]
-        for (i, pt) in pts.enumerated() {
-            let cgp = CGPoint(x: rect.minX + rect.width * pt.0,
-                              y: rect.minY + rect.height * pt.1)
-            if i == 0 { p.move(to: cgp) } else { p.addLine(to: cgp) }
+        let points = pts.map { pt in
+            CGPoint(x: rect.minX + rect.width * pt.0,
+                    y: rect.minY + rect.height * pt.1)
         }
-        return p
+        return SparklinePath.line(through: points)
     }
 }

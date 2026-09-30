@@ -5,7 +5,7 @@ occupies the left slot. Picking the provider already in the other slot swaps
 them; the central swap button does the same. Existing Claude/Codex visibility
 preferences migrate automatically, and order persists across launches.
 
-All providers use the same Ring, Bar, Stepped, Numeric, and Sparkline views,
+All providers use the same Ring, Bar, Stepped, and Sparkline views,
 used/remaining preference, peek pills, and threshold alerts. A provider's data
 selects the metrics; changing providers does not change the chart style.
 

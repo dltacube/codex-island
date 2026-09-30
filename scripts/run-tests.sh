@@ -10,6 +10,8 @@ cd "$(dirname "$0")/.."
 OUT_DIR=$(mktemp -d)
 trap 'rm -rf "$OUT_DIR"' EXIT
 
+python3 Tests/SetupSparkleTests.py
+
 swiftc -parse-as-library -o "$OUT_DIR/currency-tests" \
   Sources/Model/CurrencyStore.swift \
   Sources/Model/AppLanguageStore.swift \
@@ -208,3 +210,4 @@ swiftc \
 bash scripts/test-weekly-card.sh
 bash scripts/test-usage-ledger.sh
 bash scripts/test-claude-recovery.sh
+bash scripts/test-sparkline.sh
