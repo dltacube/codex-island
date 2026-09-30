@@ -263,9 +263,12 @@ enum UsageFetcher {
         if !(rawLimit is NSNull), limitCents == nil { return nil }
         guard limitCents.map({ $0.isFinite && $0 >= 0 }) ?? true else { return nil }
         let reportedUtilization = (details["utilization"] as? Double).map { $0 / 100 }
-        let utilization = reportedUtilization
-            ?? limitCents.flatMap { $0 > 0 ? usedCents / $0 : 1 }
-            ?? 0
+        let utilization: Double
+        if limitCents == 0 {
+            utilization = 1
+        } else {
+            utilization = reportedUtilization ?? limitCents.map { usedCents / $0 } ?? 0
+        }
         guard utilization.isFinite else { return nil }
         let resetAt: Date?
         if let epoch = details["resets_at"] as? Double, epoch.isFinite {
