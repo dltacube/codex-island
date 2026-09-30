@@ -65,7 +65,71 @@ struct CodexWindowRoutingTests {
     }
     """
 
-    static func main() {
+    static func main() async {
+        let auth = Data(#"{"tokens":{"access_token":"test-token","account_id":"selected-account"}}"#.utf8)
+        for path in ["usage", "rate-limit-reset-credits"] {
+            let request = UsageFetcher.codexRequest(path: path, authData: auth)
+            expect(request?.url?.absoluteString == "https://chatgpt.com/backend-api/wham/\(path)",
+                   "\(path) uses the intended endpoint")
+            expect(request?.value(forHTTPHeaderField: "Authorization") == "Bearer test-token",
+                   "\(path) authenticates with the existing access token")
+            expect(request?.value(forHTTPHeaderField: "ChatGPT-Account-Id") == "selected-account",
+                   "\(path) selects the signed-in account instead of the backend default")
+        }
+        let switchedAuth = Data(#"{"tokens":{"access_token":"new-token","account_id":"other-account"}}"#.utf8)
+        let switched = UsageFetcher.codexRequest(path: "usage", authData: switchedAuth)
+        expect(switched?.value(forHTTPHeaderField: "ChatGPT-Account-Id") == "other-account",
+               "changed credentials select the new account")
+        expect(switched?.value(forHTTPHeaderField: "Authorization") == "Bearer new-token",
+               "token and account come from the same credential snapshot")
+        for fixture in [#"{"tokens":{"access_token":"test-token"}}"#,
+                        #"{"tokens":{"access_token":"test-token","account_id":" "}}"#] {
+            let request = UsageFetcher.codexRequest(path: "usage", authData: Data(fixture.utf8))
+            expect(request != nil && request?.value(forHTTPHeaderField: "ChatGPT-Account-Id") == nil,
+                   "legacy credentials without an account retain token-only compatibility")
+        }
+        for fixture in ["not-json", "{}", #"{"tokens":{"account_id":"selected-account"}}"#,
+                        #"{"tokens":{"access_token":" "}}"#] {
+            expect(UsageFetcher.codexRequest(path: "usage", authData: Data(fixture.utf8)) == nil,
+                   "unusable credentials cannot create an authenticated request")
+        }
+
+        var usageRequests: [URLRequest] = []
+        let fetchedUsage = await UsageFetcher.fetchCodex(credentialData: auth) { request in
+            usageRequests.append(request)
+            guard let url = URL(string: "https://chatgpt.com/backend-api/wham/usage"),
+                  let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)
+            else { throw URLError(.badURL) }
+            return (Data(weeklyOnlyResponse.utf8), response)
+        }
+        expect(usageRequests.count == 1, "fetchCodex sends exactly one mocked request")
+        expect(usageRequests.first?.url?.absoluteString == "https://chatgpt.com/backend-api/wham/usage",
+               "fetchCodex sends to the usage endpoint")
+        expect(usageRequests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer test-token",
+               "fetchCodex sends the fixture token")
+        expect(usageRequests.first?.value(forHTTPHeaderField: "ChatGPT-Account-Id") == "selected-account",
+               "fetchCodex sends the selected account header")
+        expect(fetchedUsage.weekly.usedPercent == 0.40 && fetchedUsage.reportedWindows == [.weekly],
+               "fetchCodex parses the mocked weekly quota")
+
+        var creditRequests: [URLRequest] = []
+        let fetchedCredits = await UsageFetcher.fetchCodexResetCredits(credentialData: auth) { request in
+            creditRequests.append(request)
+            guard let url = URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"),
+                  let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)
+            else { throw URLError(.badURL) }
+            let payload = Data(#"{"available_count":2,"credits":[]}"#.utf8)
+            return (payload, response)
+        }
+        expect(creditRequests.count == 1, "fetchCodexResetCredits sends exactly one mocked request")
+        expect(creditRequests.first?.url?.absoluteString == "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits",
+               "fetchCodexResetCredits sends to the reset-credit endpoint")
+        expect(creditRequests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer test-token",
+               "fetchCodexResetCredits sends the fixture token")
+        expect(creditRequests.first?.value(forHTTPHeaderField: "ChatGPT-Account-Id") == "selected-account",
+               "fetchCodexResetCredits sends the selected account header")
+        expect(fetchedCredits?.availableCount == 2, "fetchCodexResetCredits parses the mocked credits")
+
         // MARK: the live 2026-08 shape — weekly lives in the primary slot
 
         let weeklyOnly = UsageFetcher.routeCodexWindows(rateLimit(fromResponse: weeklyOnlyResponse))

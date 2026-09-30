@@ -202,7 +202,7 @@ struct UsageChartsRow: View {
             }
             if ringsHugContent { Spacer(minLength: 18) }
         }
-        .frame(maxWidth: metrics.count == 1 ? (style == .numeric ? 180 : 240) : .infinity)
+        .frame(maxWidth: metrics.count == 1 ? 240 : .infinity)
         .frame(maxWidth: .infinity, alignment: .center)
     }
 }
@@ -240,7 +240,6 @@ struct ChartTile: View {
                 case .ring:    RingChart(value: value, color: color, label: label, sub: sub, centered: centered)
                 case .bar:     BarChart(value: value, color: color, label: label, sub: sub)
                 case .stepped: SteppedChart(value: value, color: color, label: label, sub: sub)
-                case .numeric: NumericChart(value: value, color: color, label: label, sub: compactSubCaption())
                 case .spark:   SparkChart(value: value, color: color, label: label, sub: sub,
                                           seed: seed, history: historyPoints())
                 }
@@ -295,14 +294,4 @@ struct ChartTile: View {
         return ""
     }
 
-    private func compactSubCaption() -> String {
-        if let r = window.resetAt {
-            let delta = max(0, r.timeIntervalSinceNow)
-            return "↻ " + Duration.compact(delta)
-        }
-        if let err = window.error, err != "no data" {
-            return err
-        }
-        return ""
-    }
 }
