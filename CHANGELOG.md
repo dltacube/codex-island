@@ -6,10 +6,37 @@ tag was cut.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-01
+
 ### Added
 
-- Choose SEK in Settings → Providers. Cost totals, value comparisons, and
-  model breakdowns convert from the same cached USD exchange-rate table.
+- Five quota chart styles: Rails, Ring, Grid, History, and Stepped. Quota
+  history follows recorded usage with smoother paths while keeping
+  abrupt quota changes visible.
+- A balanced notch peek with usage and reset readings on either side, including
+  a compact quota gauge when one provider is selected.
+- Claude Enterprise monthly usage credits, including unlimited credit amounts
+  and independent threshold alerts. Consumed credits are not billed charges.
+- Choose SEK as a display currency. Cost totals and shareable usage cards use
+  the selected currency and localized amount formatting.
+
+### Fixed
+
+- Follow the selected Codex account for quota and reset-credit requests.
+- Detect Claude Code account changes and re-read credentials while preserving
+  the five-minute request spacing and provider rate-limit cooldowns.
+- Preserve cached exchange rates during upgrades and keep card tier labels and
+  challenge amounts consistent with the displayed currency.
+- Recover from interrupted or incomplete Sparkle setup with bounded retries.
+- Correct Claude login guidance in both README languages: use the Claude Code
+  CLI; opening Claude Desktop alone does not create the required credentials.
+
+### Changed
+
+- Migrate legacy chart selections to the new styles; remove Numeric as a
+  standalone style while keeping numeric readings in the quota charts.
+- Add issue forms, a PR template requiring screenshots for UI changes, and
+  CodexIsland-specific code review guidance.
 
 ## [0.2.5] - 2026-09-10
 

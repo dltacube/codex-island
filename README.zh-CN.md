@@ -23,7 +23,7 @@ CodexIsland 是一个原生 macOS 悬浮层，把 MacBook 刘海变成类似 Dyn
 - **持久保存用量历史。** CodexIsland 将采集到的 token 数量保存在自己的本地数据库中，即使提供商清理日志也会保留。重复扫描不会重复计数。仅保存用量、模型、时间及匿名记录标识，不保存对话或凭据。从 **设置 → 通用 → 恢复 Claude 用量…** 打开恢复窗口，预览留存日志、备份和旧每日快照中的计数，确认后再导入。也可使用 [终端恢复脚本](docs/USAGE-HISTORY.md#recover-your-claude-usage)。详见[用量历史存储说明](docs/USAGE-HISTORY.md)。
 - **可配置 token 统计口径。** 可以选择统计所有 token（包含缓存，接近 ccusage 口径），或只统计输入 + 输出（接近 Anthropic claude.ai 统计面板）。
 - **不遮挡岛外点击。** 窗口会忽略可见轮廓外的鼠标事件，菜单栏和后面的 app 仍能正常操作。
-- **多种图表样式。** 支持 Ring、Bar、Stepped、Numeric、Sparkline；可在设置中选择默认样式，也可在展开面板里 Cmd 点击切换。
+- **五种图表样式。** 支持 Rails、Ring、Grid、History、Stepped；可在设置中选择默认样式，也可在展开面板里 Cmd 点击切换。History 使用 CodexIsland 在成功刷新时记录的真实读数。
 - **手动刷新。** 点击面板头部的同步状态即可立即重新拉取数据。
 - **低功耗模式。** 可以隐藏常驻辉光，只在刷新、悬停或接近限额提醒时显示。
 - **无 Dock 图标设置窗口。** 应用以 accessory app 运行，通过面板里的齿轮打开自定义设置窗口。
@@ -96,7 +96,7 @@ Claude：
 
 | 设置 | 存储 | UserDefaults key | 值 |
 | --- | --- | --- | --- |
-| 图表样式 | `StylePref` | `MacIsland.chartStyle` | `ring`, `bar`, `stepped`, `numeric`, `spark` |
+| 图表样式 | `StylePref` | `MacIsland.chartStyle` | `rails`, `ring`, `capacity`, `telemetry`, `stepped` |
 | 成本样式 | `CostStylePref` | `MacIsland.costStyle` | `dollar`, `multi`, `tokens`, `spark` |
 | Token 统计 | `TokenCountModeStore` | `MacIsland.tokenCountMode` | `all`, `billable` |
 | 刷新间隔 | `RefreshIntervalStore` | `MacIsland.refreshInterval` | `300`, `900`, `1800` |
