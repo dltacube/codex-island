@@ -68,7 +68,7 @@ Claude：
 
 - 在终端运行 `claude` 并完成 Claude Code 登录。仅打开 Claude Desktop 不会创建 CodexIsland 读取的 CLI 凭据。尚未安装 CLI 时，请参考 [Claude Code 安装指南](https://code.claude.com/docs/en/setup)。
 - CodexIsland 会依次检查 `CLAUDE_CODE_OAUTH_TOKEN`、macOS Keychain 中名为 `Claude Code-credentials` 或 `Claude Code-credentials-*` 的条目，再以 `$CLAUDE_CONFIG_DIR/.credentials.json`（默认 `~/.claude/.credentials.json`）作为后备来源。
-- 凭据访问严格只读。CodexIsland 不会调用 OAuth 刷新接口或写入 Claude 的凭据存储。token 过期时运行 `claude`，让 CLI 自行刷新；缺少所需权限时运行 `claude /login` 重新登录。
+- 凭据读取严格只读。CodexIsland 不会直接调用 OAuth 刷新接口或写入 Claude 的凭据存储；处理过期 token 时，应用可能启动 CLI，由 Claude Code 自行刷新并保存凭据。token 过期时运行 `claude`；缺少所需权限时，在 Claude Code 会话中输入 `/login` 重新登录。
 - 如果都不可用，面板会显示 `auth required — run claude`。
 
 应用启动后会立即进行第一次拉取，所以你第一次悬停时通常已经能看到数据。打开设置也会触发一次刷新。

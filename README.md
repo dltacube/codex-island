@@ -176,10 +176,11 @@ For Claude:
   items named `Claude Code-credentials` or `Claude Code-credentials-*`, then
   `$CLAUDE_CONFIG_DIR/.credentials.json` (normally
   `~/.claude/.credentials.json`) as a fallback.
-- Credential access is strictly read-only. CodexIsland never refreshes OAuth
-  tokens or writes to Claude's credential store; run `claude` when an access
-  token expires, or `claude /login` when the endpoint requires a newly scoped
-  token.
+- Credential access is strictly read-only. CodexIsland never calls the OAuth
+  refresh endpoint or writes to Claude's credential store. Its expired-token
+  handling may launch the CLI so Claude Code can renew its own session. Run
+  `claude` when an access token expires; if a newly scoped token is required,
+  enter `/login` inside the Claude Code session.
 - If none work, the panel shows `auth required — run claude`.
 
 The first fetch starts at app launch so the panel usually has values ready by
@@ -354,7 +355,8 @@ does not refresh it.
 
 **Claude shows `re-login: claude /login`.**
 The stored token is missing a scope now required by the usage endpoint. Run
-`claude /login` to mint a newly scoped token; refreshing the old token is not
+`claude`, then enter `/login` inside the session to mint a newly scoped token;
+refreshing the old token is not
 enough.
 
 **Codex shows `no codex auth`.**
