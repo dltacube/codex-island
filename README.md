@@ -25,7 +25,7 @@ https://github.com/user-attachments/assets/195beeff-0f70-4d6b-8f3d-9f31d9c0b989
 
 
 The app is free, open source, unsigned, and local-first. It reads credentials
-already written by Claude Code / Claude Desktop and Codex, then calls only the
+already written by the Claude Code and Codex command-line tools, then calls only the
 providers' own usage endpoints.
 
 ## What it does
@@ -170,12 +170,12 @@ For Codex:
 
 For Claude:
 
-- Run `claude` once, or open Claude Desktop, so Claude credentials are
-  populated.
-- CodexIsland checks `CLAUDE_CODE_OAUTH_TOKEN`, then
+- Run `claude` in Terminal and complete the Claude Code login. Opening
+  Claude Desktop alone does not create the CLI credentials CodexIsland reads.
+- CodexIsland checks `CLAUDE_CODE_OAUTH_TOKEN`, then matching macOS Keychain
+  items named `Claude Code-credentials` or `Claude Code-credentials-*`, then
   `$CLAUDE_CONFIG_DIR/.credentials.json` (normally
-  `~/.claude/.credentials.json`), then the macOS Keychain item named
-  `Claude Code-credentials`.
+  `~/.claude/.credentials.json`) as a fallback.
 - Credential access is strictly read-only. CodexIsland never refreshes OAuth
   tokens or writes to Claude's credential store; run `claude` when an access
   token expires, or `claude /login` when the endpoint requires a newly scoped
@@ -344,7 +344,9 @@ local log readers live in [`Sources/Cost/`](Sources/Cost/).
 ## Troubleshooting
 
 **Claude shows `auth required — run claude`.**
-Run `claude` once in Terminal or open Claude Desktop so the credentials exist.
+Run `claude` in Terminal and complete the Claude Code login. If the CLI is not
+installed, follow the [Claude Code setup guide](https://code.claude.com/docs/en/setup).
+Opening Claude Desktop alone does not create the CLI credentials CodexIsland reads.
 
 **Claude shows `token expired — run claude`.**
 Run `claude` so Claude Code can refresh its own token. CodexIsland intentionally

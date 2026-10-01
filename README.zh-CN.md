@@ -10,7 +10,7 @@
 
 CodexIsland 是一个原生 macOS 悬浮层，把 MacBook 刘海变成类似 Dynamic Island 的实时用量状态。它支持 Claude Code 和 Codex，用悬停预览 5 小时窗口，用点击展开完整面板，展示 5 小时与周窗口的用量、重置时间、图表样式，以及从本地会话日志估算的美元成本和 token 吞吐量。
 
-应用免费、开源、未签名，并且以本地优先为原则。它读取 Claude Code / Claude Desktop 和 Codex 已经写入本机的凭据，只调用对应服务自己的用量接口。
+应用免费、开源、未签名，并且以本地优先为原则。它读取 Claude Code 和 Codex 命令行工具已经写入本机的凭据，只调用对应服务自己的用量接口。
 
 ## 功能
 
@@ -66,8 +66,9 @@ Codex：
 
 Claude：
 
-- 运行一次 `claude`，或打开 Claude Desktop，让 Claude 凭据写入本机。
-- CodexIsland 会依次尝试 `CLAUDE_CODE_OAUTH_TOKEN`、macOS Keychain 里的 `Claude Code-credentials`，以及 Anthropic OAuth token endpoint 的刷新流程。
+- 在终端运行 `claude` 并完成 Claude Code 登录。仅打开 Claude Desktop 不会创建 CodexIsland 读取的 CLI 凭据。尚未安装 CLI 时，请参考 [Claude Code 安装指南](https://code.claude.com/docs/en/setup)。
+- CodexIsland 会依次检查 `CLAUDE_CODE_OAUTH_TOKEN`、macOS Keychain 中名为 `Claude Code-credentials` 或 `Claude Code-credentials-*` 的条目，再以 `$CLAUDE_CONFIG_DIR/.credentials.json`（默认 `~/.claude/.credentials.json`）作为后备来源。
+- 凭据访问严格只读。CodexIsland 不会调用 OAuth 刷新接口或写入 Claude 的凭据存储。token 过期时运行 `claude`，让 CLI 自行刷新；缺少所需权限时运行 `claude /login` 重新登录。
 - 如果都不可用，面板会显示 `auth required — run claude`。
 
 应用启动后会立即进行第一次拉取，所以你第一次悬停时通常已经能看到数据。打开设置也会触发一次刷新。
