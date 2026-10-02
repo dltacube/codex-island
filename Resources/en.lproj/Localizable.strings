@@ -401,3 +401,7 @@
 "No recorded reading" = "No recorded reading";
 
 "Unlimited" = "Unlimited";
+
+"Hide during Game Mode" = "Hide during Game Mode";
+"Hide the island while macOS Game Mode is active. It returns automatically when Game Mode ends." = "Hide the island while macOS Game Mode is active. It returns automatically when Game Mode ends.";
+
