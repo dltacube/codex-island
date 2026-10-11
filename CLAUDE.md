@@ -28,7 +28,15 @@ That's it. CI does **everything else** in ~1.5 min:
 - Uploads DMG + appcast as release assets
 - Mirrors the cask to `ericjypark/homebrew-tap` with the new version + SHA-256
 
-Watch with `gh run watch --exit-status` if you want confirmation, or just trust it.
+Verify the release workflow for the exact pushed tag with `gh run watch --exit-status`.
+Before reporting delivery complete, confirm the GitHub release contains the intended
+DMG and signed appcast, the appcast version and download URL identify that release,
+and the downstream Homebrew cask contains the matching version and DMG checksum.
+For a release sweep that includes the landing site, verify its deployed version too.
+A successful push or primary workflow does not prove downstream delivery: report
+any skipped cask sync, failed deployment, or unavailable verification separately.
+These checks apply when a release is authorized; a documentation change does not
+itself authorize tagging or releasing.
 
 ### Hard rules — break these and you brick auto-update
 
