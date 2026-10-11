@@ -4,13 +4,15 @@ import Foundation
 struct CurrencyStoreTests {
     @MainActor static func main() async throws {
         let english = Locale(identifier: "en_US")
+        // CLDR versions differ on the Swiss grouping apostrophe.
+        let swissGrouping = Locale(identifier: "de_CH").groupingSeparator ?? "’"
         let cases: [(DisplayCurrency, String, String)] = [
             (.usd, "en_US", "$1,000.00"), (.krw, "ko_KR", "₩1,000"),
             (.cny, "zh_CN", "¥1,000.00"), (.jpy, "ja_JP", "¥1,000"),
             (.gbp, "en_GB", "£1,000.00"), (.aud, "en_AU", "$1,000.00"),
             (.cad, "en_CA", "$1,000.00"), (.cad, "fr_CA", "1 000,00 $"),
             (.eur, "en_US", "€1,000.00"), (.eur, "de_DE", "1.000,00 €"),
-            (.chf, "de_CH", "CHF 1’000.00"),
+            (.chf, "de_CH", "CHF 1\(swissGrouping)000.00"),
             (.sek, "sv_SE", "1 000,00 kr"), (.sek, "en_US", "SEK 1,000.00")
         ]
         for (currency, identifier, expected) in cases {
