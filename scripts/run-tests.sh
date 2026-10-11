@@ -17,6 +17,30 @@ swiftc -parse-as-library -o "$OUT_DIR/peek-window-tests" \
   Sources/Usage/AppUsage.swift \
   Tests/PeekWindowPreferenceTests.swift
 "$OUT_DIR/peek-window-tests"
+swiftc -parse-as-library -o "$OUT_DIR/window-interaction-tests" \
+  Sources/Window/IslandWindowController.swift \
+  Sources/Model/IslandVisibilityState.swift \
+  Tests/WindowInteractionTests.swift
+"$OUT_DIR/window-interaction-tests"
+
+swiftc -parse-as-library -o "$OUT_DIR/fullscreen-tests" \
+  Sources/Model/FullscreenSpaceReader.swift \
+  Sources/Model/FullscreenWindowReader.swift \
+  Sources/Model/FullscreenStore.swift \
+  Sources/Model/IslandVisibilityState.swift \
+  Sources/Model/DisplayInfo.swift \
+  Sources/Model/IslandTargetDisplayStore.swift \
+  Sources/Model/NotchInfo.swift \
+  Sources/Model/IslandSpacingStore.swift \
+  Sources/Model/PreferenceStorage.swift \
+  Tests/FullscreenTests.swift
+"$OUT_DIR/fullscreen-tests"
+
+swiftc -parse-as-library -o "$OUT_DIR/game-mode-tests" \
+  Sources/Model/GameModeStore.swift \
+  Sources/Model/IslandVisibilityState.swift \
+  Tests/GameModeTests.swift
+"$OUT_DIR/game-mode-tests"
 
 python3 Tests/SetupSparkleTests.py
 

@@ -93,6 +93,13 @@ providers' own usage endpoints.
   pulses during active work.
 - **Settings without a Dock icon.** A quiet gear in the expanded panel opens a
   custom, resizable settings window with General, Display, and Providers tabs.
+- **Game Mode auto-hide.** The island hides while macOS Game Mode is active
+  and returns automatically afterward, without taking focus. Enabled by
+  default; turn off **General → Hide during Game Mode** to keep it visible.
+- **Fullscreen auto-hide.** The island hides in native fullscreen Spaces,
+  including browser video and Split View, and when a foreground video or
+  borderless game fills its selected display. Enabled by default; control it
+  independently with **General → Hide in fullscreen**.
 - **English and Simplified Chinese.** Follow the macOS language automatically
   or choose a language in Settings.
 - **Display selection.** Auto-pick a notched display or pin the island to a
@@ -212,7 +219,7 @@ Settings is a custom `NSWindow`, not the system Settings scene. The app still
 runs as an accessory app with no Dock icon and no menu bar.
 
 - **General:** Launch at Login, 5m/15m/30m refresh interval, app language,
-  Always show usage, Low Power Mode, configurable limit alerts, and Sparkle
+  Always show usage, Hide during Game Mode, Hide in fullscreen, Low Power Mode, configurable limit alerts, and Sparkle
   update controls.
 - **Display:** used/remaining percentages, independent Claude/Codex compact
   usage windows (Auto, 5-hour, or Weekly), Usage and Cost visualization styles,

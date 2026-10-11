@@ -407,3 +407,7 @@
 "Compact usage window" = "Compact usage window";
 "%@ compact usage window" = "%@ compact usage window";
 "Auto prefers 5-hour usage, then an available window. Explicit choices show unavailable if not reported. Applies to compact usage and alerts; expanded charts still show all windows. Claude monthly credit alerts remain active." = "Auto prefers 5-hour usage, then an available window. Explicit choices show unavailable if not reported. Applies to compact usage and alerts; expanded charts still show all windows. Claude monthly credit alerts remain active.";
+"Hide during Game Mode" = "Hide during Game Mode";
+"Hide in fullscreen" = "Hide in fullscreen";
+"Hide the island during fullscreen video and games on its display." = "Hide the island during fullscreen video and games on its display.";
+"Hide the island while macOS Game Mode is active. It returns automatically when Game Mode ends." = "Hide the island while macOS Game Mode is active. It returns automatically when Game Mode ends.";

@@ -1,5 +1,98 @@
 # Rendering performance
 
+## Fullscreen visibility
+
+`FullscreenStore` hides the island in the current native fullscreen Space or
+when a foreground application's visible window fills the island's selected
+display. `MacIsland.hideInFullscreen` defaults to true and has an independent
+General setting. This covers native fullscreen video and Split View, plus
+non-native VLC video and CrossOver-style borderless games. Fullscreen on another
+display does not hide the island. A shared native Space (when displays do not
+have separate Spaces) applies to all displays.
+
+Apple documents `NSApplication.currentSystemPresentationOptions` as observable,
+but it reported no fullscreen flag while Firefox occupied a native fullscreen
+Space on the tested macOS 26.6 system. `FullscreenSpaceReader` instead optionally
+resolves `CGSMainConnectionID` and `CGSCopyManagedDisplaySpaces` at runtime. These
+are undocumented, read-only WindowServer interfaces. It inspects only the target
+display's `Current Space` type (0 for desktop, 4 for fullscreen), not other
+Spaces. Missing symbols, display mappings, or unfamiliar payloads fail open.
+
+If no native fullscreen Space is detected, `FullscreenWindowReader` reads
+on-screen window metadata with `CGWindowListCopyWindowInfo`. It matches the
+foreground application's visible, nontransparent windows against
+`CGDisplayBounds` for the selected display. Both APIs use the same top-left
+coordinate system, including negative origins on additional displays. All four
+edges must match within two points. Desktop layers, Finder, the island itself,
+background apps, inactive Spaces, windows spanning displays, and maximized
+work-area windows that leave room for the menu bar or Dock do not qualify.
+This is a geometry heuristic: a manually resized window that fills the entire
+display is also treated as fullscreen. Neither reader captures pixels, reads
+window titles or browser content, requests Accessibility/Screen Recording
+permission, links a private framework, or changes Spaces.
+
+The store reads at startup and on workspace Space/app/wake and display-change
+notifications, with explicit refreshes on target selection and unlock. A
+one-second timer with 20% scheduling tolerance also checks for same-app
+fullscreen entry/exit, which need not emit app or Space notifications. It runs
+only while fullscreen hiding is enabled and pauses on display/system sleep and
+session lock. Disabling, suspending, or destroying the store invalidates the
+timer; queued ticks are gated too. The combined visibility subscription seeds all suppressors
+before the first display; hiding and restoring reuse the input/focus safeguards
+below. Fullscreen, Game Mode and lock are independent: all enabled suppressors
+must clear before restoration. macOS can keep Game Mode active briefly after
+leaving a game, delaying restoration even on the desktop.
+
+`Tests/FullscreenTests.swift` covers display mapping, malformed snapshots,
+inactive fullscreen Spaces, every lock/game/fullscreen preference combination,
+input gating, preference persistence, startup and notification refreshes using
+private test notification centers. Window fixtures cover borderless video/games,
+foreground identity, display geometry, malformed metadata and maximized-window
+exclusions. A real timer with an injected short interval verifies same-app
+entry/exit, opt-out, sleep/lock suspension, resume and teardown without displaying
+windows. Fixtures are not proof of live transitions.
+Live acceptance additionally checks native browser video entry/exit and Space
+switches, VLC non-native fullscreen, CrossOver borderless entry/exit, startup in
+fullscreen, selected-monitor changes, and preserved focus.
+
+## Game Mode visibility
+
+`GameModeStore` reads the Boolean state on the Darwin notification
+`com.apple.system.console_mode_changed`, emitted by macOS `gamepolicyd`.
+This is an undocumented OS signal, not a supported Game Mode API. It was
+observed active on macOS 26.6 during a native full-screen game; do not infer
+support on every OS release from successful notification registration alone.
+Unknown states and read failures leave the island visible. No screen capture,
+Accessibility permission, private framework linking, or polling is needed.
+
+`MacIsland.hideDuringGameMode` defaults to true and can be disabled in General
+settings. `IslandWindowController` combines Game Mode with its existing lock
+state, so ending a game cannot reveal a locked session and unlocking cannot
+reveal the island while Game Mode remains active. An ordered-out island cannot
+activate the app or intercept mouse/keyboard input. Restoration does not make
+the window key or activate the application. Restoration immediately recomputes
+click-through at the current pointer position, so a stationary pointer can click
+the restored island. It prepares keyboard handling (still gated by key-window
+status) without consuming the next real pointer entry. The startup mouse-poll
+fallback is stopped while hidden.
+Occlusion suppresses the glow, while existing provider/history refreshes remain
+unchanged. Display switching never overrides suppression.
+
+`Tests/GameModeTests.swift` exercises preference persistence, combined lock/game
+transitions, hidden-window input gating, startup during Game Mode, and real
+Darwin notification delivery in a unique test namespace. Tests never write or
+post Apple's Game Mode notification. Live acceptance additionally needs an
+actual game entering/leaving Game Mode and a check that foreground focus is
+preserved, including a launch while Game Mode is already active.
+
+`Tests/WindowInteractionTests.swift` compiles the real window controller against
+window/input/store spies. It exercises hide/restore beneath a stationary pointer,
+outside-pointer click-through, compact/peek modes, combined suppressors, unlock,
+focus preservation, the next real pointer entry, and keyboard-monitor lifecycle.
+The regression fails against the controller before the restoration fix. It
+does not display windows, capture or inject system input, activate applications,
+or establish live AppKit/SwiftUI event behavior.
+
 ## Keep history preparation outside interaction updates
 
 `OverviewView` observes cost data and constructs the current-year snapshot.
