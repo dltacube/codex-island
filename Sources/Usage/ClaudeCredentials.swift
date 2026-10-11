@@ -635,6 +635,7 @@ enum ClaudeCredentials {
             "\(home)/.bun/bin/claude",
             "\(home)/.npm-global/bin/claude",
             "\(home)/.local/bin/claude",
+            "\(home)/.nix-profile/bin/claude",
         ]
         for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
             return path
