@@ -65,11 +65,12 @@ struct PageHeightTests {
             print("Quota baseline: \(quotaHeight)")
             precondition(abs(quotaHeight - (heights[.usage] ?? 0)) < 1,
                          "Usage must settle before measuring the Credits height delta")
-            UsageStore.shared.claude = AppUsage(fiveHour: measured, weekly: measured,
+            let withCredits = AppUsage(fiveHour: measured, weekly: measured,
                 monthly: WindowUsage(usedPercent: 0.4, resetAt: nil,
                                      error: "Unable to fetch usage. Check connection.",
                                      usedAmount: 6.8, limitAmount: 17, currencyCode: "EUR"),
                 reportedWindows: [.fiveHour, .weekly, .monthly])
+            UsageStore.shared.claude = withCredits
             await settleLayout()
             let creditsHeight = model.size.height
             print("Credits height: \(creditsHeight)")
@@ -82,6 +83,31 @@ struct PageHeightTests {
             precondition(abs(model.size.height - quotaHeight) < 1,
                          "Removing Credits must release its space")
             print("PASS Credits addition/removal resizes the real island and hit-test model: \(quotaHeight) -> \(creditsHeight) -> \(model.size.height)")
+
+            // Publishing provider data and navigating in the same turn used to
+            // update the footer while leaving the previous page body mounted.
+            for repetition in 1...2 {
+                for hasCredits in [false, true] {
+                    for destination in ScreenPref.Screen.allCases {
+                        model.showScreen(destination == .overview ? .cost : .overview)
+                        await settleLayout()
+                        UsageStore.shared.claude = hasCredits ? withCredits : withoutCredits
+                        UsageStore.shared.codex = AppUsage(fiveHour: .unknown, weekly: measured,
+                                                          reportedWindows: [.weekly])
+                        model.showScreen(destination)
+                        await settleLayout()
+                        let expected = destination == .usage
+                            ? (hasCredits ? creditsHeight : quotaHeight)
+                            : (heights[destination] ?? 0)
+                        print("Combined update \(repetition), Credits=\(hasCredits), \(destination): expected \(expected), measured \(model.size.height)")
+                        precondition(ScreenPref.shared.screen == destination,
+                                     "Navigation must commit the requested page")
+                        precondition(abs(model.size.height - expected) < 1,
+                                     "Provider publication and navigation left the previous page visible")
+                    }
+                }
+            }
+            print("PASS all 12 simultaneous provider-update/navigation sequences")
 
             let fixture = NSHostingView(rootView: ContentSizedPageLayout(selectedPage: 1, position: 0.3) {
                 Color.red.frame(height: 80)

@@ -95,9 +95,7 @@ final class IslandModel: ObservableObject {
     func showScreen(_ screen: ScreenPref.Screen) {
         guard ScreenPref.shared.screen != screen else { return }
 
-        withAnimation(.pageSwipe) {
-            ScreenPref.shared.screen = screen
-        }
+        ScreenPref.shared.screen = screen
     }
 
     /// Substitutes the user's chosen non-notch width for the detected
