@@ -14,7 +14,8 @@ struct PageHeightTests {
                               styleMask: [.borderless], backing: .buffered, defer: false)
         // Height transitions are driven by this test, not the real cursor.
         window.ignoresMouseEvents = true
-        window.contentView = IslandHostingView(rootView: IslandRootView(model: model, tracksHover: false), model: model)
+        window.contentView = IslandHostingView(rootView: IslandRootView(
+            model: model, tracksHover: false, initialContentVisible: true), model: model)
         window.orderFrontRegardless()
         Task { @MainActor in
             @MainActor func settleLayout() async {

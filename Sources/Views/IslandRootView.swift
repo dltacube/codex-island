@@ -13,6 +13,12 @@ struct IslandRootView: View {
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
+    init(model: IslandModel, tracksHover: Bool = true, initialContentVisible: Bool = false) {
+        self.model = model
+        self.tracksHover = tracksHover
+        _contentVisible = State(initialValue: initialContentVisible)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Only the rotating loading sweep needs per-frame re-renders
