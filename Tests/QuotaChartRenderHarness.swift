@@ -29,6 +29,10 @@ struct QuotaChartRenderHarness {
                 renderer.scale = 2
                 _ = renderer.cgImage
                 RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+                if scenario.rawValue.hasPrefix("credits") {
+                    precondition(UsageStore.shared.claude.visibleWindows.contains(.monthly),
+                                 "Demo refresh must not overwrite the Credits fixture: \(scenario)")
+                }
                 guard let image = renderer.cgImage,
                       let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
                 else { fatalError("Could not render \(style.rawValue), \(scenario.rawValue)") }
@@ -102,12 +106,27 @@ enum ChartQAScenario: String, CaseIterable {
     case creditsMixed, creditsRemaining, creditsUnlimited, creditsMissing, creditsError, creditsLong, creditsOnly, creditsBoth
     case creditsSwapped, creditsSingleProvider, creditsZeroLimit, creditsOverCap
     case creditsFirstFailure, creditsLongError, creditsLocalized, creditsWrappedAmount
+    case creditsGrok, creditsAntigravity
 
     @MainActor
     func apply() {
         AppLanguageStore.shared.select(self == .creditsLocalized ? .zhHans : .en)
         ProviderVisibilityStore.shared.set(.codex, at: 0)
         ProviderVisibilityStore.shared.set(.claude, at: 1)
+        if rawValue.hasPrefix("credits") {
+            ProviderVisibilityStore.shared.set(.claude, at: 0)
+            ProviderVisibilityStore.shared.set(.codex, at: 1)
+            if self == .creditsSwapped { ProviderVisibilityStore.shared.swap() }
+            if self == .creditsSingleProvider { ProviderVisibilityStore.shared.set(nil, at: 1) }
+            if self == .creditsGrok { ProviderVisibilityStore.shared.set(.grok, at: 1) }
+            if self == .creditsAntigravity { ProviderVisibilityStore.shared.set(.antigravity, at: 1) }
+        }
+        // Selection changes enqueue a demo refresh. Drain it before installing
+        // this scenario so the render cannot silently capture default demo data.
+        _ = ProviderConnectionStore.shared
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        if self == .creditsGrok { ProviderConnectionStore.shared.refresh(.grok) }
+        if self == .creditsAntigravity { ProviderConnectionStore.shared.refresh(.antigravity) }
         UsageDisplayModeStore.shared.mode = self == .remaining || self == .creditsRemaining ? .remaining : .used
         let now = Date()
         func reading(_ value: Double, _ reset: TimeInterval) -> WindowUsage {
@@ -131,8 +150,6 @@ enum ChartQAScenario: String, CaseIterable {
                                            plan: "Max", reportedWindows: claudeWindows)
         UsageStore.shared.lastUpdated = now
         if rawValue.hasPrefix("credits") {
-            ProviderVisibilityStore.shared.set(.claude, at: 0)
-            ProviderVisibilityStore.shared.set(.codex, at: 1)
             let credit: WindowUsage
             switch self {
             case .creditsUnlimited:
@@ -173,8 +190,6 @@ enum ChartQAScenario: String, CaseIterable {
                 weekly: reading(0, 6 * 86400 + 23 * 3600),
                 monthly: self == .creditsBoth ? credit : .unknown, plan: "Plus",
                 reportedWindows: self == .creditsBoth ? [.weekly, .monthly] : [.weekly])
-            if self == .creditsSwapped { ProviderVisibilityStore.shared.swap() }
-            if self == .creditsSingleProvider { ProviderVisibilityStore.shared.set(nil, at: 1) }
         }
     }
 }

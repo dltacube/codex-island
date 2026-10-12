@@ -51,22 +51,33 @@ struct PageHeightTests {
             UsageStore.shared.codex = AppUsage(fiveHour: .unknown, weekly: measured, reportedWindows: [.weekly])
             model.showScreen(.usage)
             try? await Task.sleep(nanoseconds: 700_000_000)
+            // Flush pending AppKit layout before sampling SwiftUI's height
+            // preference; a sleep alone can leave an undrawn test window stale.
+            window.contentView?.layoutSubtreeIfNeeded()
+            try? await Task.sleep(nanoseconds: 100_000_000)
             let quotaHeight = model.size.height
+            precondition(abs(quotaHeight - (heights[.usage] ?? 0)) < 1,
+                         "Usage must settle before measuring the Credits height delta")
             UsageStore.shared.claude = AppUsage(fiveHour: measured, weekly: measured,
                 monthly: WindowUsage(usedPercent: 0.4, resetAt: nil,
                                      error: "Unable to fetch usage. Check connection.",
                                      usedAmount: 6.8, limitAmount: 17, currencyCode: "EUR"),
                 reportedWindows: [.fiveHour, .weekly, .monthly])
             try? await Task.sleep(nanoseconds: 700_000_000)
+            window.contentView?.layoutSubtreeIfNeeded()
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            let creditsHeight = model.size.height
             precondition(model.size.height > quotaHeight + 30,
                          "Credits summary and its error must contribute to the real panel height")
             precondition(model.size.height <= IslandWindowController.windowSize.height,
                          "Credits summary must fit the overlay window")
             UsageStore.shared.claude = withoutCredits
             try? await Task.sleep(nanoseconds: 700_000_000)
+            window.contentView?.layoutSubtreeIfNeeded()
+            try? await Task.sleep(nanoseconds: 100_000_000)
             precondition(abs(model.size.height - quotaHeight) < 1,
                          "Removing Credits must release its space")
-            print("PASS Credits addition/removal resizes the real island and hit-test model")
+            print("PASS Credits addition/removal resizes the real island and hit-test model: \(quotaHeight) -> \(creditsHeight) -> \(model.size.height)")
 
             let fixture = NSHostingView(rootView: ContentSizedPageLayout(selectedPage: 1, position: 0.3) {
                 Color.red.frame(height: 80)
