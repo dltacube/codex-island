@@ -286,6 +286,7 @@ final class IslandWindowController {
             return
         }
         guard !window.isVisible else { return }
+        model.setState(AlwaysShowUsageStore.shared.enabled ? .peek : .compact)
         window.alphaValue = 1
         window.orderFrontRegardless()
         updateMouseEventsBasedOnCursor(activateOnEntry: false)
