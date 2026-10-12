@@ -17,11 +17,19 @@ struct PageHeightTests {
         window.contentView = IslandHostingView(rootView: IslandRootView(model: model, tracksHover: false), model: model)
         window.orderFrontRegardless()
         Task { @MainActor in
+            @MainActor func settleLayout() async {
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                // Native test windows may not be redrawn while unfocused.
+                // Flush layout before reading the geometry preference.
+                window.contentView?.needsLayout = true
+                window.contentView?.layoutSubtreeIfNeeded()
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
             model.setState(.expanded)
             var heights: [ScreenPref.Screen: CGFloat] = [:]
             for page in ScreenPref.Screen.allCases {
                 model.showScreen(page)
-                try? await Task.sleep(nanoseconds: 700_000_000)
+                await settleLayout()
                 heights[page] = model.size.height
                 print("Measured \(page): \(model.size.height)")
             }
@@ -37,7 +45,8 @@ struct PageHeightTests {
                         model.showScreen(page)
                         try? await Task.sleep(nanoseconds: 10_000_000)
                     }
-                    try? await Task.sleep(nanoseconds: 700_000_000)
+                    await settleLayout()
+                    print("Navigation \(delay)ns -> \(destination): expected \(heights[destination] ?? 0), measured \(model.size.height), state \(model.state)")
                     precondition(abs(model.size.height - (heights[destination] ?? 0)) < 1,
                                  "Opening interrupted by navigation left the wrong height")
                 }
@@ -50,12 +59,9 @@ struct PageHeightTests {
             UsageStore.shared.claude = withoutCredits
             UsageStore.shared.codex = AppUsage(fiveHour: .unknown, weekly: measured, reportedWindows: [.weekly])
             model.showScreen(.usage)
-            try? await Task.sleep(nanoseconds: 700_000_000)
-            // Flush pending AppKit layout before sampling SwiftUI's height
-            // preference; a sleep alone can leave an undrawn test window stale.
-            window.contentView?.layoutSubtreeIfNeeded()
-            try? await Task.sleep(nanoseconds: 100_000_000)
+            await settleLayout()
             let quotaHeight = model.size.height
+            print("Quota baseline: \(quotaHeight)")
             precondition(abs(quotaHeight - (heights[.usage] ?? 0)) < 1,
                          "Usage must settle before measuring the Credits height delta")
             UsageStore.shared.claude = AppUsage(fiveHour: measured, weekly: measured,
@@ -63,18 +69,15 @@ struct PageHeightTests {
                                      error: "Unable to fetch usage. Check connection.",
                                      usedAmount: 6.8, limitAmount: 17, currencyCode: "EUR"),
                 reportedWindows: [.fiveHour, .weekly, .monthly])
-            try? await Task.sleep(nanoseconds: 700_000_000)
-            window.contentView?.layoutSubtreeIfNeeded()
-            try? await Task.sleep(nanoseconds: 100_000_000)
+            await settleLayout()
             let creditsHeight = model.size.height
+            print("Credits height: \(creditsHeight)")
             precondition(model.size.height > quotaHeight + 30,
                          "Credits summary and its error must contribute to the real panel height")
             precondition(model.size.height <= IslandWindowController.windowSize.height,
                          "Credits summary must fit the overlay window")
             UsageStore.shared.claude = withoutCredits
-            try? await Task.sleep(nanoseconds: 700_000_000)
-            window.contentView?.layoutSubtreeIfNeeded()
-            try? await Task.sleep(nanoseconds: 100_000_000)
+            await settleLayout()
             precondition(abs(model.size.height - quotaHeight) < 1,
                          "Removing Credits must release its space")
             print("PASS Credits addition/removal resizes the real island and hit-test model: \(quotaHeight) -> \(creditsHeight) -> \(model.size.height)")
