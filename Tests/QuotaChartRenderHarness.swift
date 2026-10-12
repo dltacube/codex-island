@@ -7,7 +7,8 @@ struct QuotaChartRenderHarness {
     static func main() throws {
         precondition(AppEnvironment.isDemo, "Chart QA requires isolated demo mode")
         let app = NSApplication.shared
-        app.setActivationPolicy(.regular)
+        let preview = ProcessInfo.processInfo.environment["CHART_QA_PREVIEW"] == "1"
+        app.setActivationPolicy(preview ? .regular : .prohibited)
         let output = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "notes/chart-integration-20260929/renders")
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         ProviderVisibilityStore.shared.set(.codex, at: 0)
@@ -17,7 +18,9 @@ struct QuotaChartRenderHarness {
         ScreenPref.shared.hasSwipedScreen = true
         let model = IslandModel(notch: NotchInfo(width: 180, height: 32, hasNotch: true))
         model.setState(.expanded)
-        for scenario in ChartQAScenario.allCases {
+        let scenarios = ProcessInfo.processInfo.environment["CHART_QA_PREVIEW_ONLY"] == "1"
+            ? [] : ChartQAScenario.allCases
+        for scenario in scenarios {
             scenario.apply()
             for style in ChartStyle.allCases {
                 StylePref.shared.style = style
@@ -29,24 +32,31 @@ struct QuotaChartRenderHarness {
                 guard let image = renderer.cgImage,
                       let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
                 else { fatalError("Could not render \(style.rawValue), \(scenario.rawValue)") }
+                precondition(image.width == 1600 && image.height >= 380 && image.height <= 720,
+                             "Usage content must fit the 800pt panel and 360pt overlay: \(style), \(scenario), \(image.width)x\(image.height)")
                 try png.write(to: output.appendingPathComponent("\(style.rawValue)-\(scenario.rawValue).png"))
             }
         }
-        ChartQAScenario.mixed.apply()
-        StylePref.shared.style = .ring
-        for style in CostStyle.allCases {
-            ScreenPref.shared.screen = .cost
-            CostStylePref.shared.style = style
-            try render(ChartQAPage(model: model, page: .cost), to: output.appendingPathComponent("cost-\(style.rawValue).png"))
+        if !scenarios.isEmpty {
+            ChartQAScenario.mixed.apply()
+            StylePref.shared.style = .ring
+            for style in CostStyle.allCases {
+                ScreenPref.shared.screen = .cost
+                CostStylePref.shared.style = style
+                try render(ChartQAPage(model: model, page: .cost), to: output.appendingPathComponent("cost-\(style.rawValue).png"))
+            }
+            ScreenPref.shared.screen = .overview
+            try render(ChartQAPage(model: model, page: .overview), to: output.appendingPathComponent("overview.png"))
+            ScreenPref.shared.screen = .usage
+            print("PASS: \(scenarios.count * ChartStyle.allCases.count) native chart renders including Credits layouts and bounded panel heights")
         }
-        ScreenPref.shared.screen = .overview
-        try render(ChartQAPage(model: model, page: .overview), to: output.appendingPathComponent("overview.png"))
-        ScreenPref.shared.screen = .usage
-        print("PASS: 40 native chart renders across availability, missing readings, zero, remaining and 5h-only states")
-        if ProcessInfo.processInfo.environment["CHART_QA_PREVIEW"] == "1" {
+        if preview {
+            ChartQAScenario.creditsMixed.apply()
+            StylePref.shared.style = .capacity
+            ScreenPref.shared.screen = .usage
             let window = NSWindow(contentRect: NSRect(x: 100, y: 200, width: 840, height: 380),
-                                  styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            window.title = "CodexIsland Chart QA"
+                                  styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
+            window.title = "CodexIsland - A layout (test data)"
             window.contentView = NSHostingView(rootView: ChartQAControls(model: model))
             window.center()
             window.makeKeyAndOrderFront(nil)
@@ -89,10 +99,16 @@ struct ChartQAPage: View {
 
 enum ChartQAScenario: String, CaseIterable {
     case weekly, mixed, codex, both, unknown, zero, remaining, fiveHourOnly
+    case creditsMixed, creditsRemaining, creditsUnlimited, creditsMissing, creditsError, creditsLong, creditsOnly, creditsBoth
+    case creditsSwapped, creditsSingleProvider, creditsZeroLimit, creditsOverCap
+    case creditsFirstFailure, creditsLongError, creditsLocalized, creditsWrappedAmount
 
     @MainActor
     func apply() {
-        UsageDisplayModeStore.shared.mode = self == .remaining ? .remaining : .used
+        AppLanguageStore.shared.select(self == .creditsLocalized ? .zhHans : .en)
+        ProviderVisibilityStore.shared.set(.codex, at: 0)
+        ProviderVisibilityStore.shared.set(.claude, at: 1)
+        UsageDisplayModeStore.shared.mode = self == .remaining || self == .creditsRemaining ? .remaining : .used
         let now = Date()
         func reading(_ value: Double, _ reset: TimeInterval) -> WindowUsage {
             WindowUsage(usedPercent: value / 100, resetAt: now.addingTimeInterval(reset), error: nil)
@@ -114,6 +130,52 @@ enum ChartQAScenario: String, CaseIterable {
                                            weekly: claudeWindows.contains(.weekly) ? claudeWeek : .unknown,
                                            plan: "Max", reportedWindows: claudeWindows)
         UsageStore.shared.lastUpdated = now
+        if rawValue.hasPrefix("credits") {
+            ProviderVisibilityStore.shared.set(.claude, at: 0)
+            ProviderVisibilityStore.shared.set(.codex, at: 1)
+            let credit: WindowUsage
+            switch self {
+            case .creditsUnlimited:
+                credit = WindowUsage(usedPercent: 0, resetAt: nil, error: nil, usedAmount: 1234.56, currencyCode: "USD")
+            case .creditsMissing:
+                credit = .unknown
+            case .creditsFirstFailure:
+                credit = WindowUsage(usedPercent: 0, resetAt: nil, error: "HTTP 500")
+            case .creditsZeroLimit:
+                credit = WindowUsage(usedPercent: 1, resetAt: nil, error: nil,
+                                     usedAmount: 0, limitAmount: 0, currencyCode: "USD")
+            case .creditsOverCap:
+                credit = WindowUsage(usedPercent: 1.2, resetAt: nil, error: nil,
+                                     usedAmount: 24, limitAmount: 20, currencyCode: "USD")
+            case .creditsLongError:
+                credit = WindowUsage(usedPercent: 0.4, resetAt: now.addingTimeInterval(86400),
+                                     error: "The provider is temporarily unavailable. Your previous reading is retained. Check your connection and try again later.",
+                                     usedAmount: 6.8, limitAmount: 17, currencyCode: "EUR")
+            case .creditsWrappedAmount:
+                credit = WindowUsage(usedPercent: 0.67, resetAt: nil, error: nil,
+                                     usedAmount: 123456789012345.67, limitAmount: 987654321098765.43, currencyCode: "SEK")
+            case .creditsError:
+                credit = WindowUsage(usedPercent: 0.4, resetAt: now.addingTimeInterval(86400),
+                                     error: "Unable to fetch usage. Check connection.",
+                                     usedAmount: 6.8, limitAmount: 17, currencyCode: "EUR")
+            case .creditsLong:
+                credit = WindowUsage(usedPercent: 0.67, resetAt: now.addingTimeInterval(86400), error: nil,
+                                     usedAmount: 123456789.12, limitAmount: 987654321.98, currencyCode: "SEK")
+            default:
+                credit = WindowUsage(usedPercent: 0, resetAt: nil, error: nil,
+                                     usedAmount: 0, limitAmount: 17, currencyCode: "EUR")
+            }
+            UsageStore.shared.claude = AppUsage(
+                fiveHour: WindowUsage(usedPercent: 0, resetAt: nil, error: nil),
+                weekly: reading(14, 4 * 86400 + 18 * 3600), monthly: credit, plan: "Pro",
+                reportedWindows: self == .creditsOnly ? [.monthly] : [.fiveHour, .weekly, .monthly])
+            UsageStore.shared.codex = AppUsage(fiveHour: .unknown,
+                weekly: reading(0, 6 * 86400 + 23 * 3600),
+                monthly: self == .creditsBoth ? credit : .unknown, plan: "Plus",
+                reportedWindows: self == .creditsBoth ? [.weekly, .monthly] : [.weekly])
+            if self == .creditsSwapped { ProviderVisibilityStore.shared.swap() }
+            if self == .creditsSingleProvider { ProviderVisibilityStore.shared.set(nil, at: 1) }
+        }
     }
 }
 
@@ -133,13 +195,14 @@ struct ChartQAPanel: View {
 
 struct ChartQAControls: View {
     let model: IslandModel
-    @State private var scenario: ChartQAScenario = .mixed
+    @State private var scenario: ChartQAScenario = .creditsMixed
     @ObservedObject private var pref = StylePref.shared
+    @ObservedObject private var display = UsageDisplayModeStore.shared
 
     var body: some View {
         VStack(spacing: 16) {
             HStack {
-                Text("Native chart QA - synthetic data").font(.headline)
+                Text("Implemented A layout - test data, not your account").font(.headline)
                 Spacer()
                 Picker("Quota configuration", selection: $scenario) {
                     ForEach(ChartQAScenario.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -155,6 +218,10 @@ struct ChartQAControls: View {
                         .tint(pref.style == style ? .blue : .gray)
                 }
                 Button("Cycle") { pref.cycle() }
+                Spacer()
+                Picker("Display", selection: $display.mode) {
+                    ForEach(UsageDisplayMode.allCases, id: \.self) { mode in Text(mode.label).tag(mode) }
+                }.frame(width: 170)
             }
         }
         .padding(20)

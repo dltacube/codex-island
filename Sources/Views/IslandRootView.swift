@@ -3,6 +3,7 @@ import AppKit
 
 struct IslandRootView: View {
     @ObservedObject var model: IslandModel
+    var tracksHover: Bool = true
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
     @ObservedObject private var alwaysShow = AlwaysShowUsageStore.shared
     @State private var hovering = false
@@ -158,6 +159,7 @@ struct IslandRootView: View {
                     }
                 }
                 .onHover { h in
+                    guard tracksHover else { return }
                     hovering = h
                     if h {
                         // Trackpad tap on hover-in. .levelChange is closer to

@@ -5,13 +5,16 @@ import SwiftUI
 @MainActor
 struct PageHeightTests {
     static func main() {
+        setbuf(stdout, nil)
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         ScreenPref.shared.hasSwipedScreen = true
         let model = IslandModel(notch: NotchInfo(width: 180, height: 32, hasNotch: false))
         let window = NSWindow(contentRect: NSRect(x: 100, y: 200, width: 900, height: 360),
                               styleMask: [.borderless], backing: .buffered, defer: false)
-        window.contentView = IslandHostingView(rootView: IslandRootView(model: model), model: model)
+        // Height transitions are driven by this test, not the real cursor.
+        window.ignoresMouseEvents = true
+        window.contentView = IslandHostingView(rootView: IslandRootView(model: model, tracksHover: false), model: model)
         window.orderFrontRegardless()
         Task { @MainActor in
             model.setState(.expanded)
@@ -22,7 +25,8 @@ struct PageHeightTests {
                 heights[page] = model.size.height
                 print("Measured \(page): \(model.size.height)")
             }
-            precondition((heights[.overview] ?? 0) > (heights[.cost] ?? 0))
+            precondition((heights[.overview] ?? 0) > (heights[.cost] ?? 0),
+                         "Overview must be taller than Cost in the fixture")
             for delay: UInt64 in [0, 5_000_000, 20_000_000, 80_000_000] {
                 for destination in ScreenPref.Screen.allCases {
                     withAnimation(.closeMorph) { model.setState(.compact) }
@@ -38,6 +42,32 @@ struct PageHeightTests {
                                  "Opening interrupted by navigation left the wrong height")
                 }
             }
+            ProviderVisibilityStore.shared.set(.claude, at: 0)
+            ProviderVisibilityStore.shared.set(.codex, at: 1)
+            let measured = WindowUsage(usedPercent: 0.14, resetAt: nil, error: nil)
+            let withoutCredits = AppUsage(fiveHour: measured, weekly: measured,
+                                         reportedWindows: [.fiveHour, .weekly])
+            UsageStore.shared.claude = withoutCredits
+            UsageStore.shared.codex = AppUsage(fiveHour: .unknown, weekly: measured, reportedWindows: [.weekly])
+            model.showScreen(.usage)
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            let quotaHeight = model.size.height
+            UsageStore.shared.claude = AppUsage(fiveHour: measured, weekly: measured,
+                monthly: WindowUsage(usedPercent: 0.4, resetAt: nil,
+                                     error: "Unable to fetch usage. Check connection.",
+                                     usedAmount: 6.8, limitAmount: 17, currencyCode: "EUR"),
+                reportedWindows: [.fiveHour, .weekly, .monthly])
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            precondition(model.size.height > quotaHeight + 30,
+                         "Credits summary and its error must contribute to the real panel height")
+            precondition(model.size.height <= IslandWindowController.windowSize.height,
+                         "Credits summary must fit the overlay window")
+            UsageStore.shared.claude = withoutCredits
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            precondition(abs(model.size.height - quotaHeight) < 1,
+                         "Removing Credits must release its space")
+            print("PASS Credits addition/removal resizes the real island and hit-test model")
+
             let fixture = NSHostingView(rootView: ContentSizedPageLayout(selectedPage: 1, position: 0.3) {
                 Color.red.frame(height: 80)
                 Color.blue.frame(height: 217)

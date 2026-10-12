@@ -130,6 +130,43 @@ struct EnterpriseUsageTests {
         expect(!seeded.monthly.hasReading, "percentage-only history cannot seed current monthly credit usage")
         expect(limited.amountCaption?.contains("0.47") == true, "credit caption preserves cent precision")
         expect(unlimited.amountCaption?.contains("unlimited") == true, "unlimited caption describes spend")
+        let summary = UsageCreditsSummary(window: limited, color: .white, mode: .used)
+        expect(summary.reading.value == Double(DisplayNumber.percent(limited.usedPercent * 100)),
+               "Credits summary uses measured utilization")
+        expect(summary.amountText?.contains("0.47") == true && summary.amountText?.contains("16.00") == true,
+               "Credits summary keeps exact spent amount and cap")
+        let remainingSummary = UsageCreditsSummary(window: limited, color: .white, mode: .remaining)
+        expect(remainingSummary.reading.value == Double(DisplayNumber.percent((1 - limited.usedPercent) * 100)),
+               "Credits summary respects remaining mode")
+        expect(remainingSummary.amountText == summary.amountText,
+               "Remaining mode never relabels actual spend as remaining money")
+        expect(UsageCreditsSummary(window: zero, color: .white, mode: .used).reading.value == 0,
+               "Credits summary retains genuine zero")
+        for mode in UsageDisplayMode.allCases {
+            let absent = UsageCreditsSummary(window: .unknown, color: .white, mode: mode)
+            expect(absent.reading.value == nil && absent.reading.amount == nil,
+                   "Missing Credits has no fabricated percentage in \(mode)")
+            expect(!absent.statusText.isEmpty, "Missing Credits explains its absent reading")
+            let noLimit = UsageCreditsSummary(window: unlimited, color: .white, mode: mode)
+            expect(noLimit.reading.value == nil && noLimit.reading.amount != nil,
+                   "Unlimited Credits has spend but no percentage in \(mode)")
+        }
+        let creditFailure = UsageCreditsSummary(window: retained.monthly, color: .white, mode: .used)
+        expect(creditFailure.statusText.contains("HTTP 500") && creditFailure.amountText?.contains("0.47") == true,
+               "Credits summary preserves carried amounts and fetch errors separately")
+        let noHistory = UsageCreditsSummary(window: failure, color: .white, mode: .remaining)
+        expect(noHistory.reading.value == nil && noHistory.statusText == "HTTP 500",
+               "Failed first Credits fetch is not 100 percent remaining")
+        expect(!UsageCreditsSummary(window: epoch, color: .white, mode: .used).statusText.isEmpty,
+               "Credits summary retains reset information")
+        let overCap = WindowUsage(usedPercent: 1.2, resetAt: nil, error: nil, usedAmount: 24, limitAmount: 20)
+        expect(UsageCreditsSummary(window: overCap, color: .white, mode: .used).reading.value == 100,
+               "Over-cap Credits bar stays within its available width")
+        expect(UsageCreditsSummary(window: overCap, color: .white, mode: .remaining).reading.value == 0,
+               "Over-cap Credits has no remaining quota")
+        expect(UsageCreditsSummary(window: closed, color: .white, mode: .used).reading.value == 100
+               && UsageCreditsSummary(window: closed, color: .white, mode: .remaining).reading.value == 0,
+               "Zero-limit Credits stays exhausted in both display modes")
         if failures > 0 { exit(1) }
         print("PASS all Enterprise usage checks")
     }
