@@ -22,7 +22,7 @@ struct ConnectedUsageBlock: View {
                                         loading: connections.loading.contains(provider))
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .padding(.horizontal, IslandPanelLayout.columnInset)
     }
 }

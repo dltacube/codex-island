@@ -10,17 +10,9 @@ struct UsageView: View {
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
 
     private var style: ChartStyle { pref.style }
-    private var rowHeight: CGFloat {
-        let providers = [visibility.left, visibility.right].compactMap { $0 }
-        return providers.contains { provider in
-            provider.usesLegacyUsage && (provider == .claude ? store.claude : store.codex).visibleWindows.count > 2
-        } ? 180 : IslandPanelLayout.tileHeight
-    }
-
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(alignment: .center, spacing: 0) {
             providerBlock(visibility.left)
-            hairline
             if let right = visibility.right {
                 providerBlock(right)
             } else if let legacy = visibility.left.legacy {
@@ -31,8 +23,8 @@ struct UsageView: View {
                 Color.clear.frame(maxWidth: .infinity)
             }
         }
-        .frame(height: rowHeight)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .frame(minHeight: IslandPanelLayout.tileHeight, alignment: .center)
+        .overlay { hairline.allowsHitTesting(false) }
         .padding(.horizontal, IslandPanelLayout.horizontalInset)
     }
 
@@ -90,17 +82,17 @@ struct ChartsBlock: View {
                         ProviderDataUnavailable(message: "Usage limits are not available yet.")
                     } else {
                         UsageChartsRow(color: color, style: style, seed: seed,
-                            metrics: usage.visibleWindows.map { kind in
+                            metrics: usage.visibleWindows.filter { $0 != .monthly }.map { kind in
                                 UsageChartMetric(id: kind.rawValue, label: kind.labelKey,
                                                  window: usage.window(kind),
                                                  historyKey: "\(provider.rawValue).\(kind.rawValue)")
-                            })
+                            }, credits: usage.visibleWindows.contains(.monthly) ? usage.monthly : nil)
                     }
                 }
                 .transition(.chartSwap.animation(.chartSwap))
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .padding(.horizontal, IslandPanelLayout.columnInset)
         .animation(.chartSwap, value: usage.visibleWindows)
     }
@@ -186,6 +178,7 @@ struct UsageChartsRow: View {
     let style: ChartStyle
     let seed: Int
     let metrics: [UsageChartMetric]
+    var credits: WindowUsage? = nil
     @ObservedObject private var usageDisplay = UsageDisplayModeStore.shared
     @ObservedObject private var historyStore = UsageHistoryStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -209,6 +202,23 @@ struct UsageChartsRow: View {
 
     var body: some View {
         let readings = readings
+        VStack(alignment: .leading, spacing: 16) {
+            if !readings.isEmpty {
+                charts(readings)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: metrics.count > 2 ? 180 : IslandPanelLayout.tileHeight)
+                    .id(style)
+                    .transition(reduceMotion ? .opacity : .chartSwap)
+            }
+            if let credits {
+                UsageCreditsSummary(window: credits, color: color, mode: usageDisplay.mode)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .animation(reduceMotion ? nil : .chartSwap, value: style)
+    }
+
+    private func charts(_ readings: [QuotaChartReading]) -> some View {
         Group {
             switch style {
             case .rails:
@@ -243,11 +253,6 @@ struct UsageChartsRow: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: metrics.count > 2 ? 180 : IslandPanelLayout.tileHeight)
-        .id(style)
-        .transition(reduceMotion ? .opacity : .chartSwap)
-        .animation(reduceMotion ? nil : .chartSwap, value: style)
     }
 
     func caption(_ window: WindowUsage) -> String {
