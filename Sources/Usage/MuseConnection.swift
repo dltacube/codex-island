@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Darwin
 
 enum MuseConnection {
     struct Failure: Error {
@@ -87,7 +88,9 @@ enum MuseConnection {
             process.standardOutput = pipe
             process.standardError = FileHandle.nullDevice
             try process.run()
-            let timeout = DispatchWorkItem { if process.isRunning { process.terminate() } }
+            let timeout = DispatchWorkItem {
+                if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            }
             DispatchQueue.global().asyncAfter(deadline: .now() + 3, execute: timeout)
             let result = pipe.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
