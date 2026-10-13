@@ -151,7 +151,7 @@ struct PanelFooter: View {
 
     private var connectionNeedsAttention: Bool {
         screenPref.screen == .usage && visibility.selected.contains {
-            !$0.usesLegacyUsage && connections.snapshot($0).updatedAt == nil
+            !$0.usesLegacyUsage && (connections.snapshot($0).updatedAt == nil || connections.snapshot($0).refreshFailed)
         }
     }
 
@@ -162,7 +162,7 @@ struct PanelFooter: View {
         // each store's refresh() prevent click-spam from stacking fetches.
         Button(action: triggerRefresh) {
             HStack(spacing: 6) {
-                LiveDot(active: activeLastUpdated != nil && !activeLoading && localNotice == nil)
+                LiveDot(active: activeLastUpdated != nil && !activeLoading && localNotice == nil && !connectionNeedsAttention)
                 if activeLoading {
                     Text(L10n.tr("Syncing…"))
                         .font(Typography.label)

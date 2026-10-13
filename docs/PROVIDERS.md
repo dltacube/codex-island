@@ -87,6 +87,53 @@ is stored under hashed account and metric identifiers; an unidentified session
 does not write persistent quota history. A removed custom group stays unavailable
 until the user selects another group or restores defaults.
 
+## Muse Code
+
+Select Muse Code in either provider slot and sign in with the official `muse`
+CLI. Settings opens Muse Code, or its official install page when the CLI is
+missing. Run `/login` in Muse Code to change or restore the login, then refresh
+the connection in CodexIsland.
+
+The adapter reads the CLI's `providers.meta.access_token` from
+`$MUSE_AUTH_PATH`, or `$XDG_CONFIG_HOME/muse/auth.json` (default
+`~/.config/muse/auth.json`). An inline token takes precedence over Keychain.
+Otherwise it reads the exact macOS Keychain item `ai.meta.dev.credentials` /
+`meta`. macOS may request access to this CLI-owned item. Reads run off the main
+thread and the Keychain helper is bounded to three seconds. CodexIsland never
+writes the CLI credential store or refreshes its OAuth tokens.
+
+Only the browser/device login's `dca:` credential can query subscription quota.
+Dashboard and inference API keys are not subscription credentials. The adapter
+sends an empty JSON POST to `https://api.meta.ai/muse-code/key` with
+`x-api-version: 1.0.0`. This is the CLI's key-mint endpoint, not a documented
+read-only usage API. Its response can include an inference key and payment
+metadata; both are discarded. No model inference request is made. HTTPS
+redirects are rejected. Automatic polling follows the existing 5/15/30-minute
+presets and HTTP 429 enforces a 15-minute cooldown.
+
+Reported `subs_usage.window` and `subs_usage.weekly` percentages and reset times
+feed the existing charts, used/remaining toggle, metric selection, peek, and
+alerts. The session label uses its reported duration. Over-quota percentages
+fill the gauge; missing percentages never become zero. An inactive subscription
+and incomplete billing have separate explanatory messages. Active subscriptions
+can omit quota from the response, including while idle; CodexIsland shows usage
+unavailable rather than inferring zero or reading browser cookies.
+
+Account email scopes preferences and persistent quota history. Without an
+account identity, no quota history is persisted. The credential is re-read
+before accepting a response, so a changed login discards that result. A failed
+request retains the last reading only for the same credential, marks it stale,
+and excludes it from peek and alerts. A missing login clears the displayed quota.
+Local token history and API-equivalent cost are not supported for Muse Code yet;
+those views show unavailable rather than a fabricated zero or subscription bill.
+
+Protocol references: [Meta subscriptions](https://dev.meta.ai/docs/muse-code/subscriptions),
+[Meta MSP usage schema](https://github.com/meta-models/muse-code-sdk/blob/main/schema/msp/msp.d.ts),
+and the [CodexBar Muse adapter](https://github.com/steipete/CodexBar/blob/main/Sources/CodexBarCore/Resources/Plugins/muse.ts)
+for the CLI endpoint and credential shape. Fixture tests validate parsing,
+request construction, and account isolation. Live authentication still requires
+a signed-in Muse CLI; the endpoint is not a stable public API contract.
+
 ## Limits
 
 Subscription limits and local cost history are separate sources. Cost, Tokens,
@@ -134,14 +181,18 @@ signed-in CLI. Authenticated requests use HTTPS and do not follow redirects.
 
 Provider identity colors live in `Sources/Theme/Colors.swift` and are routed
 through `IslandProvider.color` for marks, usage charts, cost charts, and peek.
-These are CodexIsland display colors, not claims about official brand palettes.
+Codex uses a neutral palette, with gray distinguishing its short-term quota.
+Claude, Grok, and Antigravity use the existing CodexIsland display colors.
+Muse Code uses the Meta symbol with its original blue gradient, and the
+`#0082FB` blue from that symbol for charts and peek.
 
 | Provider | Color | Hex |
 | --- | --- | --- |
 | Claude | Terracotta | `#CC785C` |
-| Codex | Sky blue | `#5AA8F0` |
+| Codex | Neutral white | `#E5E5E5` |
 | Grok | White | `#FFFFFF` |
 | Antigravity | Lilac | `#B69CFF` |
+| Muse Code | Meta blue | `#0082FB` |
 
 Antigravity uses a separate hue from Codex so adjacent providers are recognizable
 at a glance. Green, amber, and red remain reserved for status and alerts. Keep

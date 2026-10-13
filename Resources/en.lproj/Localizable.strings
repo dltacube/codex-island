@@ -401,3 +401,14 @@
 "No recorded reading" = "No recorded reading";
 
 "Unlimited" = "Unlimited";
+
+/* Muse Code subscription usage */
+"Open Muse Code" = "Open Muse Code";
+"Sign in with Muse Code to connect your subscription." = "Sign in with Muse Code to connect your subscription.";
+"Open Muse Code and run /login, then refresh the connection." = "Open Muse Code and run /login, then refresh the connection.";
+"Could not read Muse Code usage. Check your CLI login, then refresh." = "Could not read Muse Code usage. Check your CLI login, then refresh.";
+"Finish Muse Code billing setup at dev.meta.ai." = "Finish Muse Code billing setup at dev.meta.ai.";
+"No active Muse Code subscription. API keys use separate pay-as-you-go billing." = "No active Muse Code subscription. API keys use separate pay-as-you-go billing.";
+"Muse Code did not include usage limits in this response. Try again after using Muse Code." = "Muse Code did not include usage limits in this response. Try again after using Muse Code.";
+"Muse Code local token history is not supported yet" = "Muse Code local token history is not supported yet";
+"Last reading - refresh failed" = "Last reading - refresh failed";

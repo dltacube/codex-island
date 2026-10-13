@@ -75,7 +75,7 @@ struct QuotaAccessibility: ViewModifier {
 
 enum QuotaPalette {
     static func shortTerm(_ color: Color) -> Color {
-        if color == IslandColor.codex { return Color(red: 167/255, green: 229/255, blue: 236/255) }
+        if color == IslandColor.codex { return Color(red: 163/255, green: 163/255, blue: 163/255) }
         if color == IslandColor.claude { return Color(red: 242/255, green: 196/255, blue: 150/255) }
         if color == IslandColor.grok { return Color(red: 0.65, green: 0.83, blue: 1) }
         let native = NSColor(color)
