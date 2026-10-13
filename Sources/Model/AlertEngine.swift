@@ -67,6 +67,7 @@ final class AlertEngine: ObservableObject {
 
     private var crossings: Set<CrossingKey> = []
     private var warmedUp = false
+    private var museWarmedUp = false
     private var subs: Set<AnyCancellable> = []
 
     private init() {}
@@ -159,6 +160,7 @@ final class AlertEngine: ObservableObject {
             // for windows that were already above threshold while disabled.
             crossings.removeAll()
             warmedUp = false
+            museWarmedUp = false
             return
         }
 
@@ -174,8 +176,14 @@ final class AlertEngine: ObservableObject {
             inputs: inputs,
             warning: warning,
             critical: critical,
-            warmedUp: warmedUp
+            warmedUp: warmedUp,
+            warmingProviders: museWarmedUp ? [] : [.muse]
         )
+        // Connected fetches finish independently of UsageStore.lastUpdated.
+        // Only Muse's own usable reading can establish its startup baseline.
+        if inputs.contains(where: { $0.provider == .muse && $0.visible && $0.window.hasPercentageReading }) {
+            museWarmedUp = true
+        }
         crossings = result.next
         if !warmedUp {
             warmedUp = true
@@ -196,6 +204,7 @@ final class AlertEngine: ObservableObject {
     func prepareForPreview() {
         crossings.removeAll()
         warmedUp = true
+        museWarmedUp = true
     }
 
     private func isPulseSuppressed() -> Bool {
@@ -271,7 +280,8 @@ enum AlertDecision {
         inputs: [WindowInput],
         warning: Int,
         critical: Int,
-        warmedUp: Bool
+        warmedUp: Bool,
+        warmingProviders: Set<AlertEngine.Provider> = []
     ) -> CrossingsEvalResult {
         var next = previous
 
@@ -330,7 +340,8 @@ enum AlertDecision {
             // Build pulse line per provider that crossed any threshold this
             // tick — coalesces both providers into a single event when both
             // happen on the same usage update.
-            if newCrossings.contains(where: { $0.provider == input.provider && $0.windowKind == input.windowKind }) {
+            if !warmingProviders.contains(input.provider),
+               newCrossings.contains(where: { $0.provider == input.provider && $0.windowKind == input.windowKind }) {
                 let sev: AlertEngine.Severity = pct >= critical
                     ? .critical
                     : (pct >= warning ? .warning : .none)

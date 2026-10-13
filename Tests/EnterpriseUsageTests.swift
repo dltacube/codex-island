@@ -208,6 +208,31 @@ struct EnterpriseUsageTests {
             expect(evaluate(first.next, switched).pulse != nil,
                    "Muse session and weekly crossings retain separate identities")
         }
+        let museUnknown = AlertDecision.WindowInput(provider: .muse, visible: true, window: .unknown)
+        let startupGap = AlertDecision.evaluateCrossings(previous: [], inputs: [museUnknown],
+            warning: 80, critical: 95, warmedUp: true, warmingProviders: [.muse])
+        expect(startupGap.next.isEmpty && startupGap.pulse == nil,
+               "Legacy refresh completion cannot establish an unknown Muse baseline")
+        let museInitial = AlertDecision.WindowInput(provider: .muse, visible: true,
+            window: WindowUsage(usedPercent: 0.85, resetAt: nil, error: nil))
+        let codexCrossing = AlertDecision.WindowInput(provider: .codex, visible: true,
+            window: WindowUsage(usedPercent: 0.85, resetAt: Date(timeIntervalSince1970: 1_800_000_000), error: nil))
+        let firstMuseSnapshot = AlertDecision.evaluateCrossings(previous: startupGap.next,
+            inputs: [museInitial, codexCrossing], warning: 80, critical: 95,
+            warmedUp: true, warmingProviders: [.muse])
+        expect(firstMuseSnapshot.next.contains { $0.provider == .muse },
+               "Delayed first Muse snapshot seeds crossing memory")
+        expect(firstMuseSnapshot.pulse?.lines.map(\.provider) == [.codex],
+               "Muse startup is silent without suppressing another provider's crossing")
+        let museRepeated = AlertDecision.evaluateCrossings(previous: firstMuseSnapshot.next,
+            inputs: [museInitial, codexCrossing], warning: 80, critical: 95, warmedUp: true)
+        expect(museRepeated.pulse == nil, "Muse initial threshold remains deduplicated after warmup")
+        let museLater = AlertDecision.WindowInput(provider: .muse, visible: true,
+            window: WindowUsage(usedPercent: 0.97, resetAt: nil, error: nil))
+        let laterCrossing = AlertDecision.evaluateCrossings(previous: museRepeated.next,
+            inputs: [museLater], warning: 80, critical: 95, warmedUp: true)
+        expect(laterCrossing.pulse?.severity == .critical,
+               "A real Muse crossing after its baseline still alerts")
         if failures > 0 { exit(1) }
         print("PASS all Enterprise usage checks")
     }
