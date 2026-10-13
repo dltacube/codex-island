@@ -127,9 +127,11 @@ final class AlertEngine: ObservableObject {
                 // alert on 5h (peekWindow prefers it).
                 window: usage.codex.peekWindow
             ),
-        ] + [IslandProvider.grok, .antigravity].map { provider in
-            AlertDecision.WindowInput(provider: provider, visible: visibility.selected.contains(provider),
-                window: ProviderConnectionStore.shared.primary(provider)?.window ?? .unknown)
+        ] + IslandProvider.allCases.filter { !$0.usesLegacyUsage }.map { provider in
+            let limit = ProviderConnectionStore.shared.primary(provider)
+            return AlertDecision.WindowInput(provider: provider, visible: visibility.selected.contains(provider),
+                window: limit?.window ?? .unknown,
+                windowKind: provider == .muse && limit?.kind == .weekly ? .weekly : .fiveHour)
         }
 
         // Severity drives the silhouette tint and is always computed: a
@@ -222,6 +224,8 @@ enum AlertDecision {
         let visible: Bool
         let window: WindowUsage
         var windowKind: UsageWindow = .fiveHour
+
+        var permitsResetlessCrossings: Bool { provider == .muse || windowKind == .monthly }
     }
 
     /// Returns severity per visible window whose percent meets at least the
@@ -275,7 +279,7 @@ enum AlertDecision {
             if let currentReset = input.window.resetAt {
                 next = Set(next.compactMap { key in
                     guard key.provider == input.provider, key.windowKind == input.windowKind else { return key }
-                    if input.windowKind == .monthly, key.resetAt == nil {
+                    if input.permitsResetlessCrossings, key.resetAt == nil {
                         let bound = key.threshold == .warning ? warning : critical
                         guard input.window.hasPercentageReading, input.window.percentInt >= bound else { return nil }
                         return AlertEngine.CrossingKey(provider: key.provider, threshold: key.threshold,
@@ -283,7 +287,7 @@ enum AlertDecision {
                     }
                     return key.resetAt == currentReset ? key : nil
                 })
-            } else if input.windowKind == .monthly, input.window.hasPercentageReading {
+            } else if input.permitsResetlessCrossings, input.window.hasPercentageReading {
                 // Without a provider boundary, rearm only after an observed
                 // reading falls below the threshold. Failed polls cannot rearm.
                 next = next.filter { key in
@@ -301,7 +305,7 @@ enum AlertDecision {
         for input in inputs {
             guard input.visible else { continue }
             let resetAt = input.window.resetAt
-            guard resetAt != nil || input.windowKind == .monthly else { continue }
+            guard resetAt != nil || input.permitsResetlessCrossings else { continue }
             if !input.window.hasPercentageReading { continue }
             let pct = input.window.percentInt
 

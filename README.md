@@ -15,9 +15,10 @@
 > Your AI usage limits, living in your notch.
 
 CodexIsland is a native macOS overlay that turns the MacBook notch into a
-Dynamic-Island-style live activity for Claude Code and Codex usage limits. It
-sits quietly over the notch, peeks on hover with the 5-hour headline, and
-expands on click to show both providers' 5-hour and weekly windows with reset
+Dynamic-Island-style live activity for AI coding subscriptions. Choose up to two
+providers: Claude Code, Codex, Grok, Antigravity, or Muse Code. It
+sits quietly over the notch, peeks on hover with the selected quota, and
+expands on click to show the available usage windows with reset
 timing, chart controls, local-log cost estimates, and a year-at-a-glance usage
 history.
 
@@ -25,13 +26,15 @@ https://github.com/user-attachments/assets/195beeff-0f70-4d6b-8f3d-9f31d9c0b989
 
 
 The app is free, open source, unsigned, and local-first. It reads credentials
-already written by the Claude Code and Codex command-line tools, then calls only the
-providers' own usage endpoints.
+already written by the providers' command-line tools, then calls their own
+services to fetch subscription usage. See [provider connections](docs/PROVIDERS.md)
+for authentication details and data limitations.
 
 ## What it does
 
-- **Two providers, four windows.** Claude 5h + 7d and Codex 5h + 7d live in
-  one panel.
+- **Choose your providers.** Display one or two providers and the quota windows
+  their services report. Muse Code supports subscription usage and reset times;
+  local token history and cost estimates for Muse Code are not yet available.
 - **Notch-native overlay.** The compact state is a black pill aligned to the
   physical notch, drawn with continuous (squircle) corners that match the
   hardware. On non-notched displays it falls back to a configurable menu-bar

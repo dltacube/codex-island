@@ -401,3 +401,14 @@
 "No recorded reading" = "暂无使用记录";
 
 "Unlimited" = "不限额";
+
+/* Muse Code subscription usage */
+"Open Muse Code" = "打开 Muse Code";
+"Sign in with Muse Code to connect your subscription." = "登录 Muse Code 以连接订阅。";
+"Open Muse Code and run /login, then refresh the connection." = "打开 Muse Code 并运行 /login，然后刷新连接。";
+"Could not read Muse Code usage. Check your CLI login, then refresh." = "无法读取 Muse Code 用量。请检查 CLI 登录状态后刷新。";
+"Finish Muse Code billing setup at dev.meta.ai." = "请在 dev.meta.ai 完成 Muse Code 账单设置。";
+"No active Muse Code subscription. API keys use separate pay-as-you-go billing." = "没有有效的 Muse Code 订阅。API 密钥采用单独的按量计费。";
+"Muse Code did not include usage limits in this response. Try again after using Muse Code." = "Muse Code 本次响应未提供用量限额。使用 Muse Code 后请重试。";
+"Muse Code local token history is not supported yet" = "暂不支持 Muse Code 的本地 token 历史记录";
+"Last reading - refresh failed" = "上次读数 - 刷新失败";
