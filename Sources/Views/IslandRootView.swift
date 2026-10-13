@@ -3,6 +3,7 @@ import AppKit
 
 struct IslandRootView: View {
     @ObservedObject var model: IslandModel
+    var tracksHover: Bool = true
     @ObservedObject private var visibility = ProviderVisibilityStore.shared
     @ObservedObject private var alwaysShow = AlwaysShowUsageStore.shared
     @State private var hovering = false
@@ -11,6 +12,12 @@ struct IslandRootView: View {
     @State private var pulseToken: UUID?
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    init(model: IslandModel, tracksHover: Bool = true, initialContentVisible: Bool = false) {
+        self.model = model
+        self.tracksHover = tracksHover
+        _contentVisible = State(initialValue: initialContentVisible)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -158,6 +165,7 @@ struct IslandRootView: View {
                     }
                 }
                 .onHover { h in
+                    guard tracksHover else { return }
                     hovering = h
                     if h {
                         // Trackpad tap on hover-in. .levelChange is closer to
@@ -472,8 +480,7 @@ private struct PeekPillOverlay: View {
             tint: tint,
             alignment: isLeft ? .leading : .trailing,
             severity: severity,
-            windowLengthFallback: provider.usesLegacyUsage
-                ? (currentWindowIsMonthly ? "" : currentWindowIsWeekly ? "7d" : "5h") : "",
+            windowLengthFallback: windowLengthFallback,
             contents: contents,
             gaugeProgress: gaugeProgress,
             gaugeHeight: availableHeight ?? 38,
@@ -522,7 +529,7 @@ private struct PeekPillOverlay: View {
         switch provider {
         case .claude: return usageStore.claude.peekWindow
         case .codex:  return usageStore.codex.peekWindow
-        case .grok, .antigravity:
+        case .grok, .antigravity, .muse:
             return connections.primary(provider)?.window ?? .unknown
         }
     }
@@ -539,8 +546,20 @@ private struct PeekPillOverlay: View {
         switch provider {
         case .claude: return usageStore.claude.peekWindowKind
         case .codex: return usageStore.codex.peekWindowKind
+        case .muse:
+            guard let kind = connections.primary(provider)?.kind else { return nil }
+            return kind == .weekly ? .weekly : .fiveHour
         case .grok, .antigravity: return nil
         }
+    }
+
+    private var windowLengthFallback: String {
+        if provider == .muse {
+            guard let limit = connections.primary(provider) else { return "" }
+            return currentWindowIsWeekly ? "7d" : limit.label
+        }
+        guard currentWindowKind != nil else { return "" }
+        return currentWindowIsMonthly ? "" : currentWindowIsWeekly ? "7d" : "5h"
     }
 
     private var severity: AlertEngine.Severity {
@@ -554,7 +573,14 @@ private struct PeekPillOverlay: View {
                            monthly: Bool) -> String {
         if !self.provider.usesLegacyUsage {
             guard window.hasReading else { return L10n.tr("%@: usage unavailable", provider) }
-            return L10n.tr("%@: %d%%", provider, window.displayedPercentInt(mode: UsageDisplayModeStore.shared.mode))
+            let mode = UsageDisplayModeStore.shared.mode
+            let label: String
+            if self.provider == .muse, let limit = connections.primary(.muse) {
+                label = "\(provider), \(L10n.tr(limit.label)), \(L10n.tr(mode.label))"
+            } else {
+                label = provider
+            }
+            return L10n.tr("%@: %d%%", label, window.displayedPercentInt(mode: mode))
         }
         if !window.hasReading {
             if monthly { return L10n.tr("%@: no data for monthly window", provider) }

@@ -30,6 +30,10 @@ final class CostStore: ObservableObject {
         switch provider {
         case .claude: return claude
         case .codex: return codex
+        case .muse:
+            return ProviderCost(
+                today: .unavailable(label: "Today", reason: "Muse Code local token history is not supported yet"),
+                month: .unavailable(label: CostBucketing.currentMonthLabel(), reason: "Muse Code local token history is not supported yet"))
         case .grok, .antigravity:
             return connectedCosts[provider] ?? ProviderCost(
                 today: .unavailable(label: "Today", reason: "Local usage has not been loaded"),
@@ -41,7 +45,7 @@ final class CostStore: ObservableObject {
         switch provider {
         case .claude: return claudeLoading
         case .codex: return codexLoading
-        case .grok, .antigravity: return connectedLoading.contains(provider)
+        case .grok, .antigravity, .muse: return connectedLoading.contains(provider)
         }
     }
 
@@ -386,6 +390,7 @@ extension IslandProvider {
         case .codex: return .codex
         case .grok: return .grok
         case .antigravity: return .antigravity
+        case .muse: return .muse
         }
     }
 }

@@ -22,3 +22,8 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Meta symbol used for the Muse Code provider
+Source: https://dev.meta.ai/logo/meta-logo-with-text.svg
+The symbol is extracted from Meta's published SVG without altering its paths or gradient.
+Meta and the Meta symbol are trademarks of Meta Platforms, Inc.

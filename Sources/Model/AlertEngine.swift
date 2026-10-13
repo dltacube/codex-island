@@ -67,6 +67,7 @@ final class AlertEngine: ObservableObject {
 
     private var crossings: Set<CrossingKey> = []
     private var warmedUp = false
+    private var museWarmedUp = false
     private var subs: Set<AnyCancellable> = []
 
     private init() {}
@@ -127,9 +128,11 @@ final class AlertEngine: ObservableObject {
                 // alert on 5h (peekWindow prefers it).
                 window: usage.codex.peekWindow
             ),
-        ] + [IslandProvider.grok, .antigravity].map { provider in
-            AlertDecision.WindowInput(provider: provider, visible: visibility.selected.contains(provider),
-                window: ProviderConnectionStore.shared.primary(provider)?.window ?? .unknown)
+        ] + IslandProvider.allCases.filter { !$0.usesLegacyUsage }.map { provider in
+            let limit = ProviderConnectionStore.shared.primary(provider)
+            return AlertDecision.WindowInput(provider: provider, visible: visibility.selected.contains(provider),
+                window: limit?.window ?? .unknown,
+                windowKind: provider == .muse && limit?.kind == .weekly ? .weekly : .fiveHour)
         }
 
         // Severity drives the silhouette tint and is always computed: a
@@ -157,6 +160,7 @@ final class AlertEngine: ObservableObject {
             // for windows that were already above threshold while disabled.
             crossings.removeAll()
             warmedUp = false
+            museWarmedUp = false
             return
         }
 
@@ -172,8 +176,14 @@ final class AlertEngine: ObservableObject {
             inputs: inputs,
             warning: warning,
             critical: critical,
-            warmedUp: warmedUp
+            warmedUp: warmedUp,
+            warmingProviders: museWarmedUp ? [] : [.muse]
         )
+        // Connected fetches finish independently of UsageStore.lastUpdated.
+        // Only Muse's own usable reading can establish its startup baseline.
+        if inputs.contains(where: { $0.provider == .muse && $0.visible && $0.window.hasPercentageReading }) {
+            museWarmedUp = true
+        }
         crossings = result.next
         if !warmedUp {
             warmedUp = true
@@ -194,6 +204,7 @@ final class AlertEngine: ObservableObject {
     func prepareForPreview() {
         crossings.removeAll()
         warmedUp = true
+        museWarmedUp = true
     }
 
     private func isPulseSuppressed() -> Bool {
@@ -222,6 +233,8 @@ enum AlertDecision {
         let visible: Bool
         let window: WindowUsage
         var windowKind: UsageWindow = .fiveHour
+
+        var permitsResetlessCrossings: Bool { provider == .muse || windowKind == .monthly }
     }
 
     /// Returns severity per visible window whose percent meets at least the
@@ -267,7 +280,8 @@ enum AlertDecision {
         inputs: [WindowInput],
         warning: Int,
         critical: Int,
-        warmedUp: Bool
+        warmedUp: Bool,
+        warmingProviders: Set<AlertEngine.Provider> = []
     ) -> CrossingsEvalResult {
         var next = previous
 
@@ -275,7 +289,7 @@ enum AlertDecision {
             if let currentReset = input.window.resetAt {
                 next = Set(next.compactMap { key in
                     guard key.provider == input.provider, key.windowKind == input.windowKind else { return key }
-                    if input.windowKind == .monthly, key.resetAt == nil {
+                    if input.permitsResetlessCrossings, key.resetAt == nil {
                         let bound = key.threshold == .warning ? warning : critical
                         guard input.window.hasPercentageReading, input.window.percentInt >= bound else { return nil }
                         return AlertEngine.CrossingKey(provider: key.provider, threshold: key.threshold,
@@ -283,7 +297,7 @@ enum AlertDecision {
                     }
                     return key.resetAt == currentReset ? key : nil
                 })
-            } else if input.windowKind == .monthly, input.window.hasPercentageReading {
+            } else if input.permitsResetlessCrossings, input.window.hasPercentageReading {
                 // Without a provider boundary, rearm only after an observed
                 // reading falls below the threshold. Failed polls cannot rearm.
                 next = next.filter { key in
@@ -301,7 +315,7 @@ enum AlertDecision {
         for input in inputs {
             guard input.visible else { continue }
             let resetAt = input.window.resetAt
-            guard resetAt != nil || input.windowKind == .monthly else { continue }
+            guard resetAt != nil || input.permitsResetlessCrossings else { continue }
             if !input.window.hasPercentageReading { continue }
             let pct = input.window.percentInt
 
@@ -326,7 +340,8 @@ enum AlertDecision {
             // Build pulse line per provider that crossed any threshold this
             // tick — coalesces both providers into a single event when both
             // happen on the same usage update.
-            if newCrossings.contains(where: { $0.provider == input.provider && $0.windowKind == input.windowKind }) {
+            if !warmingProviders.contains(input.provider),
+               newCrossings.contains(where: { $0.provider == input.provider && $0.windowKind == input.windowKind }) {
                 let sev: AlertEngine.Severity = pct >= critical
                     ? .critical
                     : (pct >= warning ? .warning : .none)

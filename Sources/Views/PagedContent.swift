@@ -32,6 +32,7 @@ struct PagedContent: View {
             OverviewView()
                 .accessibilityHidden(screenPref.screen != .overview)
         }
+        .animation(.pageSwipe, value: screenPref.screen)
         .clipped()
         .onAppear {
             // Discoverability cue, not decorative motion — fires even

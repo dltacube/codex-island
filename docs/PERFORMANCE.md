@@ -208,6 +208,12 @@ Each page remains mounted, retaining provider selection and transition content.
 Graph pages supply their own vertical padding; calendar details participate in
 normal layout rather than requesting a fixed height increment from the model.
 
+`IslandModel.showScreen` commits page selection without an animation transaction.
+`PagedContent` applies `.pageSwipe` when that committed selection changes. Keep
+the animation at the view boundary: wrapping the shared selection mutation in
+`withAnimation` could retain the previous page body when provider data published
+in the same turn, even though the footer already showed the new selection.
+
 The expanded island wraps this intrinsic content. Its shape and background follow
 the resulting bounds. A geometry preference mirrors those bounds into
 `IslandModel.size` for mouse hit testing; that value does not constrain expanded
@@ -227,6 +233,10 @@ navigates 0, 5, 20, or 80 ms into its opening animation, including rapid
 cost → usage → cost → overview reversals. It verifies each destination settles
 at its measured content height. A separate layout fixture checks that an
 intermediate horizontal position still uses the selected page's intrinsic height.
+The same root-view test checks Credits addition/removal and 12 simultaneous
+provider-publication/navigation sequences, covering all pages with and without
+Credits. These checks need a graphical session and are separate from the headless
+Swift regression suite.
 
 Testing only settled page changes misses the opening-animation interruption.
 Live checks should also select a calendar day and confirm that the detail strip

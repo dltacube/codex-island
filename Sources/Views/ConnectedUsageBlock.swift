@@ -11,18 +11,25 @@ struct ConnectedUsageBlock: View {
         let limits = connections.limits(provider)
         Group {
             if !snapshot.needsLogin && limits.contains(where: { $0.usedFraction != nil }) {
-                UsageChartsRow(color: provider.color, style: style.style, seed: provider == .grok ? 5 : 7,
-                    metrics: limits.map { limit in
-                        UsageChartMetric(id: limit.id, label: limit.label, window: limit.window,
-                                         historyKey: snapshot.historyKey(provider: provider, limit: limit))
-                    })
-                    .help(limits.first?.groupLabel ?? provider.name)
+                VStack(spacing: 4) {
+                    UsageChartsRow(color: provider.color, style: style.style, seed: provider == .grok ? 5 : 7,
+                        metrics: limits.map { limit in
+                            UsageChartMetric(id: limit.id, label: limit.label, window: limit.window,
+                                             historyKey: snapshot.historyKey(provider: provider, limit: limit))
+                        })
+                        .help(limits.first?.groupLabel ?? provider.name)
+                    if snapshot.refreshFailed {
+                        Text(L10n.tr("Last reading - refresh failed"))
+                            .font(Typography.caption).foregroundStyle(.white.opacity(0.65))
+                            .help(L10n.tr(snapshot.message ?? "Connection unavailable"))
+                    }
+                }
             } else {
                 ProviderUsageEmptyState(provider: provider, snapshot: snapshot,
                                         loading: connections.loading.contains(provider))
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .padding(.horizontal, IslandPanelLayout.columnInset)
     }
 }

@@ -19,6 +19,7 @@ extension IslandProvider {
         case .codex: return IslandColor.codex
         case .grok: return IslandColor.grok
         case .antigravity: return IslandColor.antigravity
+        case .muse: return IslandColor.muse
         }
     }
     var legacy: AlertEngine.Provider? {
@@ -38,21 +39,25 @@ struct ProviderMark: View {
     private static let grok = Bundle.main.url(forResource: "grok_logo", withExtension: "png").flatMap { NSImage(contentsOf: $0) }
     private static let antigravity = Bundle.main.url(forResource: "antigravity_logo", withExtension: "png").flatMap { NSImage(contentsOf: $0) }
 
+    private static let muse = Bundle.main.url(forResource: "muse_logo", withExtension: "pdf").flatMap { NSImage(contentsOf: $0) }
+
     private var image: NSImage? {
         switch provider {
         case .claude: return Self.claude
         case .codex: return Self.codex
         case .grok: return Self.grok
         case .antigravity: return Self.antigravity
+        case .muse: return Self.muse
         }
     }
 
     var body: some View {
         Group {
             if let image {
-                Image(nsImage: image).resizable().renderingMode(.template).scaledToFit()
+                Image(nsImage: image).resizable()
+                    .renderingMode(provider == .muse ? .original : .template).scaledToFit()
             } else {
-                Image(systemName: provider == .grok ? "asterisk" : "a.circle")
+                Image(systemName: provider == .muse ? "questionmark.square.dashed" : provider == .grok ? "asterisk" : "a.circle")
                     .resizable().scaledToFit()
             }
         }

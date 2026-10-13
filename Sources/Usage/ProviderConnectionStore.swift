@@ -31,7 +31,9 @@ final class ProviderConnectionStore: ObservableObject {
     }
 
     func snapshot(_ provider: IslandProvider) -> ConnectedUsage {
-        snapshots[provider] ?? ConnectedUsage(message: provider == .grok
+        snapshots[provider] ?? ConnectedUsage(message: provider == .muse
+            ? "Sign in with Muse Code to connect your subscription."
+            : provider == .grok
             ? "Sign in with Grok CLI to connect your subscription."
             : "Sign in with agy CLI to connect your subscription.", needsLogin: true)
     }
@@ -44,6 +46,7 @@ final class ProviderConnectionStore: ObservableObject {
 
     func primary(_ provider: IslandProvider) -> ConnectedLimit? {
         let usage = snapshot(provider)
+        guard !usage.refreshFailed else { return nil }
         return ProviderQuotaPreferences.primary(limits(provider),
             selection: ProviderQuotaPreferences.shared.selection(for: usage.storageScope(provider: provider)))
     }
@@ -59,6 +62,15 @@ final class ProviderConnectionStore: ObservableObject {
         if let until = cooldown[provider], until > Date() { return }
         if !manually, let previous = lastAttempt[provider], Date().timeIntervalSince(previous) < 300 { return }
         if AppEnvironment.isDemo {
+            if provider == .muse {
+                snapshots[provider] = ConnectedUsage(limits: [
+                    ConnectedLimit(id: "session", label: "5h", usedFraction: 0.38,
+                        resetAt: Date().addingTimeInterval(7200), kind: .session),
+                    ConnectedLimit(id: "weekly", label: "week", usedFraction: 0.62,
+                        resetAt: Date().addingTimeInterval(86400), kind: .weekly)
+                ], plan: "Power Usage", updatedAt: Date(), subscriptionActive: true)
+                return
+            }
             snapshots[provider] = ConnectedUsage(limits: [
                 ConnectedLimit(id: "demo", label: provider == .grok ? "Credits" : "5h",
                     usedFraction: 0.38, resetAt: Date().addingTimeInterval(7200),
@@ -88,10 +100,15 @@ final class ProviderConnectionStore: ObservableObject {
                 }
             }
             do {
-                let fetched = try await ProviderSessionRecovery.fetch {
-                    try await (provider == .grok ? GrokConnection.fetch() : AntigravityConnection.fetch())
-                } renew: {
-                    try await ProviderSessionRecovery.renew(provider == .grok ? "grok" : "agy")
+                let fetched: ConnectedUsage
+                if provider == .muse {
+                    fetched = try await MuseConnection.fetch()
+                } else {
+                    fetched = try await ProviderSessionRecovery.fetch {
+                        try await (provider == .grok ? GrokConnection.fetch() : AntigravityConnection.fetch())
+                    } renew: {
+                        try await ProviderSessionRecovery.renew(provider == .grok ? "grok" : "agy")
+                    }
                 }
                 guard !Task.isCancelled else { return }
                 snapshots[provider] = fetched
@@ -103,31 +120,42 @@ final class ProviderConnectionStore: ObservableObject {
                 }
             } catch {
                 guard !Task.isCancelled else { return }
+                let museFailure = error as? MuseConnection.Failure
+                let error = museFailure?.underlying ?? error
                 var message: String
                 var needsLogin = false
                 switch error {
+                case ProviderConnectionError.http(403) where provider == .muse:
+                    needsLogin = true
+                    message = "Open Muse Code and run /login, then refresh the connection."
                 case ProviderConnectionError.signIn, ProviderConnectionError.expired,
                      ProviderConnectionError.http(401):
                     needsLogin = true
-                    message = provider == .grok ? "Run grok login, then refresh the connection."
+                    message = provider == .muse ? "Open Muse Code and run /login, then refresh the connection."
+                        : provider == .grok ? "Run grok login, then refresh the connection."
                         : "Open agy CLI to restore your session, then refresh the connection."
                 case ProviderConnectionError.http(429):
                     cooldown[provider] = Date().addingTimeInterval(900)
                     message = "Rate limited. Retrying in 15 minutes."
                 default:
-                    message = provider == .grok ? "Could not read Grok usage. Try refreshing the connection."
+                    message = provider == .muse ? "Could not read Muse Code usage. Check your CLI login, then refresh."
+                        : provider == .grok ? "Could not read Grok usage. Try refreshing the connection."
                         : "Could not read Antigravity usage. Check your agy CLI login, then refresh."
                 }
-                snapshots[provider] = ConnectedUsage(message: message, needsLogin: needsLogin)
+                snapshots[provider] = provider == .muse
+                    ? MuseConnection.failedSnapshot(previous: snapshots[provider], failure: museFailure,
+                        message: message, needsLogin: needsLogin)
+                    : ConnectedUsage(message: message, needsLogin: needsLogin)
             }
         }
     }
 
     func connect(_ provider: IslandProvider) {
-        guard provider == .grok || provider == .antigravity else { return }
-        let command = provider == .grok ? "grok" : "agy"
+        guard !provider.usesLegacyUsage else { return }
+        let command = provider == .muse ? "muse" : provider == .grok ? "grok" : "agy"
         guard let binary = ProviderSessionRecovery.binary(command) else {
-            let installURL = provider == .grok ? "https://grok.com/build" : "https://antigravity.google/docs/cli/install/"
+            let installURL = provider == .muse ? "https://dev.meta.ai/docs/muse-code"
+                : provider == .grok ? "https://grok.com/build" : "https://antigravity.google/docs/cli/install/"
             if let url = URL(string: installURL) { NSWorkspace.shared.open(url) }
             return
         }
@@ -139,7 +167,9 @@ final class ProviderConnectionStore: ObservableObject {
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
             NSWorkspace.shared.open(file)
         } catch {
-            snapshots[provider] = ConnectedUsage(message: provider == .grok
+            snapshots[provider] = ConnectedUsage(message: provider == .muse
+                ? "Open Muse Code and run /login, then refresh the connection."
+                : provider == .grok
                 ? "Run grok login in Terminal, then refresh the connection."
                 : "Open agy CLI to restore your session, then refresh the connection.", needsLogin: true)
         }

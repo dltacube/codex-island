@@ -161,7 +161,7 @@ struct ProviderConnectionSection: View {
                 }
                 if signedIn {
                     Menu {
-                        Button(L10n.tr(provider == .grok ? "Sign in again…" : "Open agy CLI"), action: connect)
+                        Button(L10n.tr(provider == .muse ? "Open Muse Code" : provider == .grok ? "Sign in again…" : "Open agy CLI"), action: connect)
                     } label: {
                         Image(systemName: "ellipsis").frame(width: 20, height: 28)
                     }
@@ -180,13 +180,14 @@ struct ProviderConnectionSection: View {
                     if signedIn, snapshot.primary == nil {
                         Text(L10n.tr(provider == .grok ? "Credit usage unavailable" : "Usage unavailable"))
                             .font(.system(size: 12)).foregroundStyle(.white.opacity(0.75))
-                    } else if let message = snapshot.message {
+                    }
+                    if let message = snapshot.message {
                         Text(L10n.tr(message))
                             .font(.system(size: 12)).foregroundStyle(.white.opacity(0.65))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     if snapshot.needsLogin {
-                        Button(L10n.tr(provider == .grok ? "Sign in with Grok CLI" : "Open agy CLI"), action: connect)
+                        Button(L10n.tr(provider == .muse ? "Open Muse Code" : provider == .grok ? "Sign in with Grok CLI" : "Open agy CLI"), action: connect)
                             .controlSize(.small)
                     }
                 }
