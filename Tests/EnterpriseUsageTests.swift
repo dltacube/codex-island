@@ -167,6 +167,47 @@ struct EnterpriseUsageTests {
         expect(UsageCreditsSummary(window: closed, color: .white, mode: .used).reading.value == 100
                && UsageCreditsSummary(window: closed, color: .white, mode: .remaining).reading.value == 0,
                "Zero-limit Credits stays exhausted in both display modes")
+        for kind in [UsageWindow.fiveHour, .weekly] {
+            func input(_ fraction: Double, reset: Date? = nil) -> AlertDecision.WindowInput {
+                AlertDecision.WindowInput(provider: .muse, visible: true,
+                    window: WindowUsage(usedPercent: fraction, resetAt: reset, error: nil), windowKind: kind)
+            }
+            func evaluate(_ previous: Set<AlertEngine.CrossingKey>, _ value: AlertDecision.WindowInput,
+                          warmedUp: Bool = true) -> AlertDecision.CrossingsEvalResult {
+                AlertDecision.evaluateCrossings(previous: previous, inputs: [value],
+                    warning: 80, critical: 95, warmedUp: warmedUp)
+            }
+            let first = evaluate([], input(0.85))
+            expect(first.pulse?.severity == .warning, "Muse \(kind) crossing alerts without reset metadata")
+            expect(evaluate(first.next, input(0.85)).pulse == nil,
+                   "Muse \(kind) repeated resetless readings do not pulse again")
+            expect(evaluate([], input(0.85), warmedUp: false).pulse == nil,
+                   "Muse \(kind) startup warmup remains silent")
+            let failedInput = AlertDecision.WindowInput(provider: .muse, visible: true,
+                                                        window: .unknown, windowKind: kind)
+            let afterFailure = evaluate(first.next, failedInput)
+            expect(afterFailure.next == first.next && afterFailure.pulse == nil,
+                   "Muse \(kind) missing reading cannot rearm an alert")
+            let rearmed = evaluate(first.next, input(0.20))
+            expect(rearmed.next.isEmpty && evaluate(rearmed.next, input(0.85)).pulse != nil,
+                   "Muse \(kind) observed usage drop rearms the next crossing")
+            let boundary = Date(timeIntervalSince1970: 1_800_000_000)
+            let restored = evaluate(first.next, input(0.85, reset: boundary))
+            expect(restored.pulse == nil && restored.next.allSatisfy { $0.resetAt == boundary },
+                   "Muse \(kind) arriving reset metadata preserves crossing memory")
+            expect(evaluate(restored.next, input(0.85)).pulse == nil,
+                   "Muse \(kind) lost reset metadata cannot duplicate a pulse")
+            expect(evaluate(restored.next, input(0.85, reset: boundary.addingTimeInterval(3600))).pulse != nil,
+                   "Muse \(kind) new provider boundary allows a new alert")
+            let critical = evaluate(first.next, input(0.97))
+            expect(critical.pulse?.severity == .critical && critical.next.count == 2,
+                   "Muse \(kind) critical crossing alerts independently")
+            let otherKind: UsageWindow = kind == .weekly ? .fiveHour : .weekly
+            let switched = AlertDecision.WindowInput(provider: .muse, visible: true,
+                window: WindowUsage(usedPercent: 0.85, resetAt: nil, error: nil), windowKind: otherKind)
+            expect(evaluate(first.next, switched).pulse != nil,
+                   "Muse session and weekly crossings retain separate identities")
+        }
         if failures > 0 { exit(1) }
         print("PASS all Enterprise usage checks")
     }

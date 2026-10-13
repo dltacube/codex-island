@@ -113,7 +113,9 @@ presets and HTTP 429 enforces a 15-minute cooldown.
 
 Reported `subs_usage.window` and `subs_usage.weekly` percentages and reset times
 feed the existing charts, used/remaining toggle, metric selection, peek, and
-alerts. The session label uses its reported duration. Over-quota percentages
+alerts. Session and weekly alerts keep separate crossing memory. Without reset
+metadata, alerts rearm only after an observed reading falls below the threshold;
+missing readings cannot rearm them. The session label uses its reported duration. Over-quota percentages
 fill the gauge; missing percentages never become zero. An inactive subscription
 and incomplete billing have separate explanatory messages. Active subscriptions
 can omit quota from the response, including while idle; CodexIsland shows usage
