@@ -474,8 +474,7 @@ private struct PeekPillOverlay: View {
             tint: tint,
             alignment: isLeft ? .leading : .trailing,
             severity: severity,
-            windowLengthFallback: provider.usesLegacyUsage
-                ? (currentWindowIsMonthly ? "" : currentWindowIsWeekly ? "7d" : "5h") : "",
+            windowLengthFallback: windowLengthFallback,
             contents: contents,
             gaugeProgress: gaugeProgress,
             gaugeHeight: availableHeight ?? 38,
@@ -541,8 +540,20 @@ private struct PeekPillOverlay: View {
         switch provider {
         case .claude: return usageStore.claude.peekWindowKind
         case .codex: return usageStore.codex.peekWindowKind
-        case .grok, .antigravity, .muse: return nil
+        case .muse:
+            guard let kind = connections.primary(provider)?.kind else { return nil }
+            return kind == .weekly ? .weekly : .fiveHour
+        case .grok, .antigravity: return nil
         }
+    }
+
+    private var windowLengthFallback: String {
+        if provider == .muse {
+            guard let limit = connections.primary(provider) else { return "" }
+            return currentWindowIsWeekly ? "7d" : limit.label
+        }
+        guard currentWindowKind != nil else { return "" }
+        return currentWindowIsMonthly ? "" : currentWindowIsWeekly ? "7d" : "5h"
     }
 
     private var severity: AlertEngine.Severity {
@@ -556,7 +567,14 @@ private struct PeekPillOverlay: View {
                            monthly: Bool) -> String {
         if !self.provider.usesLegacyUsage {
             guard window.hasReading else { return L10n.tr("%@: usage unavailable", provider) }
-            return L10n.tr("%@: %d%%", provider, window.displayedPercentInt(mode: UsageDisplayModeStore.shared.mode))
+            let mode = UsageDisplayModeStore.shared.mode
+            let label: String
+            if self.provider == .muse, let limit = connections.primary(.muse) {
+                label = "\(provider), \(L10n.tr(limit.label)), \(L10n.tr(mode.label))"
+            } else {
+                label = provider
+            }
+            return L10n.tr("%@: %d%%", label, window.displayedPercentInt(mode: mode))
         }
         if !window.hasReading {
             if monthly { return L10n.tr("%@: no data for monthly window", provider) }
