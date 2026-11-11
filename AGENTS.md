@@ -3,6 +3,15 @@
 Read [CLAUDE.md](CLAUDE.md) before editing this repository. It contains the
 shared release, credential-handling, build, documentation, and style rules.
 
+## Local workspaces
+
+The main checkout stays at `~/source/codex-island/`. Local linked worktrees
+live in `.worktrees/`; select the intended checkout and read its own `AGENTS.md`
+and `CLAUDE.md` before editing. Resolve former `codex-island-worktrees/<name>`
+paths to `.worktrees/<name>` rather than recreating old directories. When present,
+`notes/local-workspaces.org` contains the maintainer workspace map and recovery
+checks. These local directories are ignored; do not add them as Git submodules.
+
 ## Code Review Rules
 
 Review the changed behavior in the current app's data flow, not just the changed

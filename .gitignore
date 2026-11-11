@@ -36,3 +36,6 @@ skills-lock.json
 AGENTS.md
 # Root guidance is shared with Codex code review.
 !/AGENTS.md
+
+# Local linked checkouts stay inside the canonical source directory.
+/.worktrees/
