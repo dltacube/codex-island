@@ -62,9 +62,9 @@ enum CodexLogReader {
             parse: parseFile(at:)
         )
         var occurrences: [String: Int] = [:]
-        let events = walk.changed.compactMap { event, file -> TokenEvent? in
+        let events = walk.changed.compactMap { event, file, state -> TokenEvent? in
             guard event.timestamp >= cutoff else { return nil }
-            return TokenEvent(
+            var token = TokenEvent(
                 provider: .codex,
                 timestamp: event.timestamp,
                 model: event.model,
@@ -74,8 +74,11 @@ enum CodexLogReader {
                 cacheReadTokens: event.cacheReadTokens,
                 recordID: LogParseCache.recordID(file: file, timestamp: event.timestamp, occurrences: &occurrences)
             )
+            token.sourceFileIdentity = state.identity
+            return token
         }
-        return UsageSourceScan(events: events, files: walk.files, isComplete: walk.isComplete)
+        return UsageSourceScan(events: events, files: walk.files,
+                               changedFileIdentities: walk.changedFileIdentities, isComplete: walk.isComplete)
     }
 
     private static func sessionsRoot() -> URL {

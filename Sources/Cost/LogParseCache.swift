@@ -21,8 +21,9 @@ enum LogParseCache {
     }
 
     struct IncrementalResult<Event> {
-        let changed: [(Event, URL)]
+        let changed: [(Event, URL, UsageSourceFile)]
         let files: [UsageSourceFile]
+        let changedFileIdentities: Set<String>
         let isComplete: Bool
     }
 
@@ -194,14 +195,21 @@ enum LogParseCache {
         cacheVersion: Int,
         context: UsageScanContext,
         useLegacyCache: Bool = true,
+        migrationCache: ParseCache<Event>? = nil,
         fileFilter: (URL) -> Bool = { _ in true },
         parse: (URL) -> [Event]
     ) -> IncrementalResult<Event> {
-        let legacy = context.files.isEmpty && useLegacyCache
-            ? loadCache(filename: cacheFilename, version: cacheVersion, eventType: Event.self)
-            : ParseCache<Event>(version: cacheVersion, files: [:])
-        var changed: [(Event, URL)] = []
+        let legacy: ParseCache<Event>
+        if let migrationCache {
+            legacy = migrationCache
+        } else if context.files.isEmpty && useLegacyCache {
+            legacy = loadCache(filename: cacheFilename, version: cacheVersion, eventType: Event.self)
+        } else {
+            legacy = ParseCache<Event>(version: cacheVersion, files: [:])
+        }
+        var changed: [(Event, URL, UsageSourceFile)] = []
         var files: [UsageSourceFile] = []
+        var changedFileIdentities = Set<String>()
         var complete = true
 
         for root in roots {
@@ -223,15 +231,20 @@ enum LogParseCache {
                     events = legacyHit ?? parse(entry.url)
                 } else if context.files[state.identity]?.matches(state) == true {
                     events = []
-                } else if context.files.isEmpty, legacyHit != nil {
-                    events = []
                 } else {
-                    events = parse(entry.url)
+                    events = legacyHit ?? parse(entry.url)
                 }
-                changed.append(contentsOf: events.map { ($0, entry.url) })
+                if context.files[state.identity]?.matches(state) != true {
+                    changedFileIdentities.insert(state.identity)
+                }
+                changed.append(contentsOf: events.map { ($0, entry.url, state) })
             }
         }
-        return IncrementalResult(changed: changed, files: files, isComplete: complete)
+        if complete {
+            changedFileIdentities.formUnion(Set(context.files.keys).subtracting(files.map(\.identity)))
+        }
+        return IncrementalResult(changed: changed, files: files,
+                                 changedFileIdentities: changedFileIdentities, isComplete: complete)
     }
 
     private static func fileIdentity(_ url: URL) -> String {

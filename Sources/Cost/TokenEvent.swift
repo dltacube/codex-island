@@ -25,6 +25,7 @@ struct TokenEvent {
     let cacheReadTokens: Int
     var recordID: String? = nil
     var recordAliases: [String] = []
+    var sourceFileIdentity: String? = nil
 }
 
 struct UsageSourceFile: Equatable {
@@ -43,6 +44,7 @@ struct UsageSourceFile: Equatable {
 struct UsageSourceScan {
     let events: [TokenEvent]
     let files: [UsageSourceFile]
+    let changedFileIdentities: Set<String>
     let isComplete: Bool
 }
 

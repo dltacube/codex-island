@@ -13,12 +13,14 @@ Claude Cowork sessions, Codex, OpenCode, Grok, and Antigravity. For Claude and
 Codex, the ledger stores each source file's hashed identity, modification time,
 size, and parser version. Unchanged files submit no cached events; changed files
 are reparsed and only their records are offered to the ledger. The former
-monolithic JSON parser caches are read once to seed this metadata for an
-existing archive, then remain disposable and are no longer rewritten. Deleting
-the ledger also deletes its file watermarks, so the next capture reconstructs
-the archive from every available source file. Capture runs at launch and on the
-existing refresh schedule; it does not add network requests or change quota
-polling intervals.
+monolithic JSON parser caches are read once during migration. Matching cached
+events are replayed through the ledger's idempotent upsert before their file
+watermarks are established, so a parser cache written before a failed ledger
+transaction cannot hide unsaved usage. The caches then remain disposable and
+are no longer rewritten. Deleting the ledger also deletes its file watermarks,
+so the next capture reconstructs the archive from every available source file.
+Capture runs at launch and on the existing refresh schedule; it does not add
+network requests or change quota polling intervals.
 
 Each call keeps its provider, model, timestamp, disjoint input/output/cache
 counts, and a hashed identity. Calls with stable provider IDs update the same
@@ -27,8 +29,10 @@ timestamp, and repeated-timestamp ordinal. OpenCode's existing duplicate-call
 fingerprints are retained as aliases so a surviving fork does not recount an
 already saved call. Primary record identities are not duplicated as self-alias
 rows, and legacy Claude/Codex self-alias rows are not scanned during refresh.
-Claude streaming repeats use a real recorded row whose counts dominate the
-earlier row, never a synthesized sum of multiple rows.
+Claude retains each stable record's per-file token vector alongside the file
+watermark. Streaming repeats use a real recorded row whose counts dominate the
+earlier row across changed and unchanged files, never a synthesized sum of
+multiple rows.
 
 Writes use SQLite transactions, WAL, and full synchronization. Separate
 writers cannot overwrite each other's history, and an older in-flight scan

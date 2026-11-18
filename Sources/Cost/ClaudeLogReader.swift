@@ -77,9 +77,9 @@ enum ClaudeLogReader {
         var positions: [String: Int] = [:]
         var occurrences: [String: Int] = [:]
         var out: [TokenEvent] = []
-        for (event, file) in walk.changed {
+        for (event, file, state) in walk.changed {
             guard event.timestamp >= cutoff, !requireStableIDs || !event.dedupKey.isEmpty else { continue }
-            let token = TokenEvent(
+            var token = TokenEvent(
                 provider: .claude,
                 timestamp: event.timestamp,
                 model: event.model,
@@ -91,7 +91,9 @@ enum ClaudeLogReader {
                     ? LogParseCache.recordID(file: file, timestamp: event.timestamp, occurrences: &occurrences)
                     : event.dedupKey
             )
-            if !event.dedupKey.isEmpty, let position = positions[event.dedupKey] {
+            token.sourceFileIdentity = state.identity
+            let positionKey = "\(state.identity):\(event.dedupKey)"
+            if !event.dedupKey.isEmpty, let position = positions[positionKey] {
                 let previous = out[position]
                 if token.model == previous.model,
                    token.inputTokens >= previous.inputTokens, token.outputTokens >= previous.outputTokens,
@@ -100,11 +102,12 @@ enum ClaudeLogReader {
                     out[position] = token
                 }
             } else {
-                if !event.dedupKey.isEmpty { positions[event.dedupKey] = out.count }
+                if !event.dedupKey.isEmpty { positions[positionKey] = out.count }
                 out.append(token)
             }
         }
-        return UsageSourceScan(events: out, files: walk.files, isComplete: walk.isComplete)
+        return UsageSourceScan(events: out, files: walk.files,
+                               changedFileIdentities: walk.changedFileIdentities, isComplete: walk.isComplete)
     }
 
     static func projectRoots() -> [URL] {

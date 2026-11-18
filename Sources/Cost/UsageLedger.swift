@@ -47,17 +47,20 @@ final class UsageLedger {
     func retain(_ events: [TokenEvent], source: Source, now: Date = Date(), observedAt: Date? = nil,
                 insertOnly: Bool = false) -> Snapshot {
         retain(events, source: source, now: now, observedAt: observedAt,
-               insertOnly: insertOnly, sourceFiles: nil, sourceScanComplete: false)
+               insertOnly: insertOnly, sourceFiles: nil, changedFileIdentities: nil,
+               sourceScanComplete: false)
     }
 
     func retain(_ scan: UsageSourceScan, source: Source, now: Date = Date(), observedAt: Date? = nil,
                 insertOnly: Bool = false) -> Snapshot {
         retain(scan.events, source: source, now: now, observedAt: observedAt,
-               insertOnly: insertOnly, sourceFiles: scan.files, sourceScanComplete: scan.isComplete)
+               insertOnly: insertOnly, sourceFiles: scan.files,
+               changedFileIdentities: scan.changedFileIdentities, sourceScanComplete: scan.isComplete)
     }
 
     private func retain(_ events: [TokenEvent], source: Source, now: Date, observedAt: Date?,
                         insertOnly: Bool, sourceFiles: [UsageSourceFile]?,
+                        changedFileIdentities: Set<String>?,
                         sourceScanComplete: Bool) -> Snapshot {
         lock.lock()
         defer { lock.unlock() }
@@ -84,8 +87,16 @@ final class UsageLedger {
             }
             try Self.execute(database, "BEGIN IMMEDIATE")
             do {
-                let batch = Self.canonicalized(incoming, aliases: try Self.readAliases(source: source, database: database))
                 let isCurrent = try Self.isCurrent(observedAt, source: source, database: database)
+                let sourceRecords: [String: TokenEvent]
+                if isCurrent && !insertOnly, source == .claude, let changedFileIdentities {
+                    sourceRecords = try Self.reconcileSourceRecords(events, changedFileIdentities: changedFileIdentities,
+                                                                    source: source, now: now, database: database)
+                } else {
+                    sourceRecords = incoming
+                }
+                let batch = Self.canonicalized(sourceRecords,
+                                               aliases: try Self.readAliases(source: source, database: database))
                 try Self.upsert(batch.records, source: source, now: now, updateExisting: isCurrent && !insertOnly, database: database)
                 try Self.saveAliases(batch.aliases, source: source, database: database)
                 if isCurrent && !insertOnly {
@@ -438,6 +449,25 @@ final class UsageLedger {
                 PRIMARY KEY (source, file_id)
             ) WITHOUT ROWID
             """)
+        try? execute(database, """
+            CREATE TABLE IF NOT EXISTS source_file_events (
+                source TEXT NOT NULL,
+                file_id TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                timestamp REAL NOT NULL,
+                model TEXT NOT NULL,
+                input_tokens INTEGER NOT NULL CHECK (input_tokens >= 0),
+                output_tokens INTEGER NOT NULL CHECK (output_tokens >= 0),
+                cache_creation_tokens INTEGER NOT NULL CHECK (cache_creation_tokens >= 0),
+                cache_read_tokens INTEGER NOT NULL CHECK (cache_read_tokens >= 0),
+                PRIMARY KEY (source, file_id, record_id)
+            ) WITHOUT ROWID
+            """)
+        try? execute(database, """
+            CREATE INDEX IF NOT EXISTS source_file_events_source_record_id_file_id
+            ON source_file_events (source, record_id, file_id)
+            """)
     }
 
     private static func readHistoricalDays(source: Source, database: OpaquePointer) throws -> [HistoricalUsageDay] {
@@ -602,6 +632,118 @@ final class UsageLedger {
         let existing = try readSourceFiles(source: source, database: database)
         for file in files where existing[file.identity]?.matches(file) != true { return true }
         return removeMissing && Set(existing.keys) != Set(files.map(\.identity))
+    }
+
+    private static func reconcileSourceRecords(_ events: [TokenEvent], changedFileIdentities: Set<String>,
+                                               source: Source, now: Date,
+                                               database: OpaquePointer) throws -> [String: TokenEvent] {
+        guard try tableExists("source_file_events", database: database) else { throw StorageError.schema }
+        var affected = Set<String>()
+
+        let oldRecords = try statement(database, """
+            SELECT record_id FROM source_file_events WHERE source=? AND file_id=?
+            """)
+        defer { sqlite3_finalize(oldRecords) }
+        let deleteFile = try statement(database, "DELETE FROM source_file_events WHERE source=? AND file_id=?")
+        defer { sqlite3_finalize(deleteFile) }
+        for fileID in changedFileIdentities {
+            sqlite3_reset(oldRecords)
+            sqlite3_clear_bindings(oldRecords)
+            try bind(source.rawValue, at: 1, to: oldRecords)
+            try bind(fileID, at: 2, to: oldRecords)
+            while true {
+                let status = sqlite3_step(oldRecords)
+                if status == SQLITE_DONE { break }
+                guard status == SQLITE_ROW, let value = sqlite3_column_text(oldRecords, 0) else {
+                    throw StorageError.database
+                }
+                affected.insert(String(cString: value))
+            }
+
+            sqlite3_reset(deleteFile)
+            sqlite3_clear_bindings(deleteFile)
+            try bind(source.rawValue, at: 1, to: deleteFile)
+            try bind(fileID, at: 2, to: deleteFile)
+            guard sqlite3_step(deleteFile) == SQLITE_DONE else { throw StorageError.database }
+        }
+
+        let insert = try statement(database, """
+            INSERT OR REPLACE INTO source_file_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """)
+        defer { sqlite3_finalize(insert) }
+        var direct: [TokenEvent] = []
+        for event in events {
+            guard let fileID = event.sourceFileIdentity, changedFileIdentities.contains(fileID),
+                  let (recordID, validEvent) = records([event], now: now).first else {
+                direct.append(event)
+                continue
+            }
+            affected.insert(recordID)
+            sqlite3_reset(insert)
+            sqlite3_clear_bindings(insert)
+            try bind(source.rawValue, at: 1, to: insert)
+            try bind(fileID, at: 2, to: insert)
+            try bind(recordID, at: 3, to: insert)
+            try bind(validEvent.provider.rawValue, at: 4, to: insert)
+            guard sqlite3_bind_double(insert, 5, validEvent.timestamp.timeIntervalSince1970) == SQLITE_OK else {
+                throw StorageError.database
+            }
+            try bind(validEvent.model, at: 6, to: insert)
+            for (offset, count) in [validEvent.inputTokens, validEvent.outputTokens,
+                                    validEvent.cacheCreationTokens, validEvent.cacheReadTokens].enumerated() {
+                guard sqlite3_bind_int64(insert, Int32(offset + 7), Int64(count)) == SQLITE_OK else {
+                    throw StorageError.database
+                }
+            }
+            guard sqlite3_step(insert) == SQLITE_DONE else { throw StorageError.database }
+        }
+
+        var reconciled = records(direct, now: now)
+        for recordID in affected {
+            if let event = try dominantSourceEvent(recordID: recordID, source: source, database: database) {
+                reconciled[recordID] = event
+            }
+        }
+        return reconciled
+    }
+
+    private static func dominantSourceEvent(recordID: String, source: Source,
+                                            database: OpaquePointer) throws -> TokenEvent? {
+        let query = try statement(database, """
+            SELECT provider, timestamp, model, input_tokens, output_tokens,
+                   cache_creation_tokens, cache_read_tokens
+            FROM source_file_events WHERE source=? AND record_id=? ORDER BY file_id
+            """)
+        defer { sqlite3_finalize(query) }
+        try bind(source.rawValue, at: 1, to: query)
+        try bind(recordID, at: 2, to: query)
+        var selected: TokenEvent?
+        while true {
+            let status = sqlite3_step(query)
+            if status == SQLITE_DONE { return selected }
+            guard status == SQLITE_ROW,
+                  let providerText = sqlite3_column_text(query, 0),
+                  let provider = TokenEvent.Provider(rawValue: String(cString: providerText)),
+                  let modelText = sqlite3_column_text(query, 2) else { throw StorageError.record }
+            let candidate = TokenEvent(
+                provider: provider,
+                timestamp: Date(timeIntervalSince1970: sqlite3_column_double(query, 1)),
+                model: String(cString: modelText),
+                inputTokens: Int(sqlite3_column_int64(query, 3)),
+                outputTokens: Int(sqlite3_column_int64(query, 4)),
+                cacheCreationTokens: Int(sqlite3_column_int64(query, 5)),
+                cacheReadTokens: Int(sqlite3_column_int64(query, 6))
+            )
+            if selected == nil || dominates(candidate, selected!) { selected = candidate }
+        }
+    }
+
+    private static func dominates(_ candidate: TokenEvent, _ previous: TokenEvent) -> Bool {
+        candidate.model == previous.model
+            && candidate.inputTokens >= previous.inputTokens
+            && candidate.outputTokens >= previous.outputTokens
+            && candidate.cacheCreationTokens >= previous.cacheCreationTokens
+            && candidate.cacheReadTokens >= previous.cacheReadTokens
     }
 
     private static func bind(_ value: String, at index: Int32, to statement: OpaquePointer) throws {
