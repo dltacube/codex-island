@@ -26,3 +26,27 @@ struct TokenEvent {
     var recordID: String? = nil
     var recordAliases: [String] = []
 }
+
+struct UsageSourceFile: Equatable {
+    let identity: String
+    let modifiedAt: Date
+    let size: Int64
+    let parserVersion: Int
+
+    func matches(_ other: UsageSourceFile) -> Bool {
+        size == other.size && parserVersion == other.parserVersion
+            && abs(modifiedAt.timeIntervalSinceReferenceDate
+                   - other.modifiedAt.timeIntervalSinceReferenceDate) < 0.001
+    }
+}
+
+struct UsageSourceScan {
+    let events: [TokenEvent]
+    let files: [UsageSourceFile]
+    let isComplete: Bool
+}
+
+struct UsageScanContext {
+    let files: [String: UsageSourceFile]
+    let needsBootstrap: Bool
+}

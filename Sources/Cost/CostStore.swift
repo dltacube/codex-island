@@ -115,8 +115,9 @@ final class CostStore: ObservableObject {
             Task.detached(priority: .userInitiated) { [weak self] in
                 let openCode = await openCodeTask?.value
                 let observedAt = Date()
-                let saved = UsageLedger.shared.retain(ClaudeLogReader.scan(lookbackDays: nil),
-                                                      source: .claude, observedAt: observedAt)
+                let ledger = UsageLedger.shared
+                let scan = ClaudeLogReader.incrementalScan(context: ledger.scanContext(source: .claude))
+                let saved = ledger.retain(scan, source: .claude, observedAt: observedAt)
                 let events = saved.events + (openCode?.events.filter { $0.provider == .claude } ?? [])
                 let cost = CostSummary.summarize(events: events, historicalDays: saved.historicalDays)
                 await self?.commitClaude(cost, saveError: saved.saveError ?? openCode?.saveError)
@@ -127,8 +128,9 @@ final class CostStore: ObservableObject {
             Task.detached(priority: .userInitiated) { [weak self] in
                 let openCode = await openCodeTask?.value
                 let observedAt = Date()
-                let saved = UsageLedger.shared.retain(CodexLogReader.scan(lookbackDays: nil),
-                                                      source: .codex, observedAt: observedAt)
+                let ledger = UsageLedger.shared
+                let scan = CodexLogReader.incrementalScan(context: ledger.scanContext(source: .codex))
+                let saved = ledger.retain(scan, source: .codex, observedAt: observedAt)
                 let events = saved.events + (openCode?.events.filter { $0.provider == .codex } ?? [])
                 let cost = CostSummary.summarize(events: events, historicalDays: saved.historicalDays)
                 await self?.commitCodex(cost, saveError: saved.saveError ?? openCode?.saveError)
@@ -156,7 +158,7 @@ final class CostStore: ObservableObject {
         localNotices[.claude] = saveError
         self.claudeLoading = false
         self.lastUpdated = Date()
-        persist()
+        persistIfSettled()
     }
 
     private func commitCodex(_ cost: ProviderCost, saveError: String?) {
@@ -165,7 +167,7 @@ final class CostStore: ObservableObject {
         localNotices[.codex] = saveError
         self.codexLoading = false
         self.lastUpdated = Date()
-        persist()
+        persistIfSettled()
     }
 
     func startAutoRefresh() {
@@ -348,6 +350,10 @@ final class CostStore: ObservableObject {
         if let data = try? Self.cacheEncoder.encode(snap) {
             UserDefaults.standard.set(data, forKey: Self.cacheKey)
         }
+    }
+
+    private func persistIfSettled() {
+        if !claudeLoading && !codexLoading { persist() }
     }
 
     private func restoreFromCache() {

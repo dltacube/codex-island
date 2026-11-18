@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Shared scaffolding for the per-provider JSONL log readers (Claude, Codex).
@@ -19,6 +20,12 @@ enum LogParseCache {
         let size: Int64
     }
 
+    struct IncrementalResult<Event> {
+        let changed: [(Event, URL)]
+        let files: [UsageSourceFile]
+        let isComplete: Bool
+    }
+
     /// Walks `root` and returns every `*.jsonl` modified at or after `cutoff`.
     /// Caller can additionally filter by filename via `filter`.
     static func jsonlFiles(
@@ -26,12 +33,21 @@ enum LogParseCache {
         modifiedAfter cutoff: Date,
         filter: (URL) -> Bool = { _ in true }
     ) -> [FileEntry] {
+        jsonlFileWalk(under: root, modifiedAfter: cutoff, filter: filter).entries
+    }
+
+    private static func jsonlFileWalk(
+        under root: URL,
+        modifiedAfter cutoff: Date,
+        filter: (URL) -> Bool
+    ) -> (entries: [FileEntry], complete: Bool) {
         let fm = FileManager.default
+        guard fm.fileExists(atPath: root.path) else { return ([], true) }
         guard let enumerator = fm.enumerator(
             at: root,
             includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else { return [] }
+        ) else { return ([], false) }
 
         var hits: [FileEntry] = []
         for case let url as URL in enumerator {
@@ -43,7 +59,7 @@ enum LogParseCache {
             if mtime < cutoff { continue }
             hits.append(FileEntry(url: url, mtime: mtime, size: Int64(size)))
         }
-        return hits
+        return (hits, true)
     }
 
     /// Stream `url` in 64 KB chunks and invoke `onLine` once per newline-
@@ -169,6 +185,58 @@ enum LogParseCache {
         guard let url = cacheURL(filename: filename),
               let data = try? JSONEncoder().encode(cache) else { return }
         try? data.write(to: url, options: .atomic)
+    }
+
+    static func incrementalWalk<Event: Codable>(
+        roots: [URL],
+        cutoff: Date,
+        cacheFilename: String,
+        cacheVersion: Int,
+        context: UsageScanContext,
+        useLegacyCache: Bool = true,
+        fileFilter: (URL) -> Bool = { _ in true },
+        parse: (URL) -> [Event]
+    ) -> IncrementalResult<Event> {
+        let legacy = context.files.isEmpty && useLegacyCache
+            ? loadCache(filename: cacheFilename, version: cacheVersion, eventType: Event.self)
+            : ParseCache<Event>(version: cacheVersion, files: [:])
+        var changed: [(Event, URL)] = []
+        var files: [UsageSourceFile] = []
+        var complete = true
+
+        for root in roots {
+            let walk = jsonlFileWalk(under: root, modifiedAfter: cutoff, filter: fileFilter)
+            complete = complete && walk.complete
+            for entry in walk.entries {
+                let state = UsageSourceFile(
+                    identity: fileIdentity(entry.url),
+                    modifiedAt: entry.mtime,
+                    size: entry.size,
+                    parserVersion: cacheVersion
+                )
+                files.append(state)
+                let legacyHit = legacy.files[entry.url.path].flatMap {
+                    $0.matches(mtime: entry.mtime, size: entry.size) ? $0.events : nil
+                }
+                let events: [Event]
+                if context.needsBootstrap {
+                    events = legacyHit ?? parse(entry.url)
+                } else if context.files[state.identity]?.matches(state) == true {
+                    events = []
+                } else if context.files.isEmpty, legacyHit != nil {
+                    events = []
+                } else {
+                    events = parse(entry.url)
+                }
+                changed.append(contentsOf: events.map { ($0, entry.url) })
+            }
+        }
+        return IncrementalResult(changed: changed, files: files, isComplete: complete)
+    }
+
+    private static func fileIdentity(_ url: URL) -> String {
+        SHA256.hash(data: Data(url.standardizedFileURL.path.utf8))
+            .map { String(format: "%02x", $0) }.joined()
     }
 
     /// Walk `roots`, parse uncached files, and return every cached event

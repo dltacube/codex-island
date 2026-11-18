@@ -9,6 +9,11 @@ All providers use the same Rails, Ring, Grid, History, and Stepped views,
 used/remaining preference, peek pills, and threshold alerts. A provider's data
 selects the metrics; changing providers does not change the chart style.
 
+Claude and Codex quota requests use a shared ephemeral network session. Their
+authenticated responses, cookies, and request metadata are not written to the
+system URL cache; existing request spacing, account headers, and provider-owned
+credential behavior are unchanged.
+
 ## Codex limit windows
 
 Codex charts follow the windows reported by the usage API, not the plan name.

@@ -232,8 +232,10 @@ final class UsageStore: ObservableObject {
             // Record this poll's readings so the history chart can plot real
             // history. `record` keeps only non-errored windows, so a failed
             // or rate-limited fetch leaves a gap instead of a flat fake line.
-            if let c { UsageHistoryStore.shared.record(provider: .codex, usage: c, at: now) }
-            if let cl { UsageHistoryStore.shared.record(provider: .claude, usage: cl, at: now) }
+            var readings: [(AlertEngine.Provider, AppUsage)] = []
+            if let c { readings.append((.codex, c)) }
+            if let cl { readings.append((.claude, cl)) }
+            UsageHistoryStore.shared.record(readings, at: now)
             self.lastUpdated = now
             self.loading = false
         }

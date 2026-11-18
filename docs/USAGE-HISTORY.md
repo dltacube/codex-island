@@ -8,23 +8,33 @@ it when an original log disappears.
 
 ## Capture
 
-The existing local refresh reads all currently available records from Claude
-Code, locally mirrored Claude Cowork sessions, Codex, OpenCode, Grok, and
-Antigravity. Parser caches still avoid re-reading unchanged Claude and Codex
-files. Capture runs at launch and on the existing refresh schedule; it does
-not add network requests or change quota polling intervals.
+The existing local refresh reads records from Claude Code, locally mirrored
+Claude Cowork sessions, Codex, OpenCode, Grok, and Antigravity. For Claude and
+Codex, the ledger stores each source file's hashed identity, modification time,
+size, and parser version. Unchanged files submit no cached events; changed files
+are reparsed and only their records are offered to the ledger. The former
+monolithic JSON parser caches are read once to seed this metadata for an
+existing archive, then remain disposable and are no longer rewritten. Deleting
+the ledger also deletes its file watermarks, so the next capture reconstructs
+the archive from every available source file. Capture runs at launch and on the
+existing refresh schedule; it does not add network requests or change quota
+polling intervals.
 
 Each call keeps its provider, model, timestamp, disjoint input/output/cache
 counts, and a hashed identity. Calls with stable provider IDs update the same
 entry across scans. Codex and older Claude records use the session filename,
 timestamp, and repeated-timestamp ordinal. OpenCode's existing duplicate-call
 fingerprints are retained as aliases so a surviving fork does not recount an
-already saved call. Claude streaming repeats use a real recorded row whose
-counts dominate the earlier row, never a synthesized sum of multiple rows.
+already saved call. Primary record identities are not duplicated as self-alias
+rows, and legacy Claude/Codex self-alias rows are not scanned during refresh.
+Claude streaming repeats use a real recorded row whose counts dominate the
+earlier row, never a synthesized sum of multiple rows.
 
 Writes use SQLite transactions, WAL, and full synchronization. Separate
 writers cannot overwrite each other's history, and an older in-flight scan
 cannot replace a newer observation. The database is owner-readable only.
+An unchanged incremental source scan returns the retained history without
+starting a capture transaction.
 The ledger maintains an index on source, timestamp, and record identity so a
 refresh can read retained history in display order without materializing a
 temporary SQLite sort. Existing archives try to add this index on their next
@@ -158,7 +168,8 @@ tool payloads, or credentials, and it is not uploaded anywhere.
 
 Run `bash scripts/test-usage-ledger.sh` to verify persistence across source
 deletion, reopening, repeated scans, corrections, concurrent writers, storage
-errors, indexed history ordering, and recovered aggregate overlap.
+errors, incremental source watermarks, ledger reconstruction, indexed history
+ordering, and recovered aggregate overlap.
 Run `bash scripts/test-claude-recovery.sh` for preview isolation, copied backup
 deduplication, source preservation, repeat imports, archive backups, and
 historical timezone checks. It also checks whole-import rollback, frozen

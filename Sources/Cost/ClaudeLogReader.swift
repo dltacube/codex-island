@@ -8,14 +8,12 @@ import Foundation
 ///   - dedupes by `messageId:requestId`
 ///   - skips synthetic placeholder models
 ///
-/// Per-file parse results are memoized in `~/Library/Caches/.../claude-parse-cache.v1.json`
-/// keyed by (path, mtime, size). Between two 5/15/30-minute polls almost no
-/// file has changed, so the steady-state refresh skips the JSONL scan entirely
-/// and only walks the events list to dedup + filter by cutoff.
+/// Normal app refreshes retain only hashed (path, mtime, size) watermarks in the
+/// usage ledger and parse files whose watermark changed. The former JSON cache
+/// is read once as migration input when available; refreshes never rewrite it.
 enum ClaudeLogReader {
-    /// Walk the configured project roots and return every usage-bearing
-    /// assistant turn from the last `lookbackDays` days. Pure file IO; no
-    /// network. Safe to call from a background thread.
+    /// Full-scan compatibility path used by recovery and parser tests. Normal
+    /// app refreshes use `incrementalScan` below.
     static func scan(lookbackDays: Int? = 30, roots: [URL]? = nil, requireStableIDs: Bool = false) -> [TokenEvent] {
         let cutoff = lookbackDays.map { Date().addingTimeInterval(-Double($0) * 86400) } ?? .distantPast
         var positions: [String: Int] = [:]
@@ -58,6 +56,55 @@ enum ClaudeLogReader {
             }
         )
         return out
+    }
+
+    static func incrementalScan(
+        context: UsageScanContext,
+        lookbackDays: Int? = nil,
+        roots: [URL]? = nil,
+        requireStableIDs: Bool = false
+    ) -> UsageSourceScan {
+        let cutoff = lookbackDays.map { Date().addingTimeInterval(-Double($0) * 86400) } ?? .distantPast
+        let walk = LogParseCache.incrementalWalk(
+            roots: roots ?? projectRoots(),
+            cutoff: cutoff,
+            cacheFilename: "claude-parse-cache.v1.json",
+            cacheVersion: cacheVersion,
+            context: context,
+            useLegacyCache: roots == nil,
+            parse: parseFile(at:)
+        )
+        var positions: [String: Int] = [:]
+        var occurrences: [String: Int] = [:]
+        var out: [TokenEvent] = []
+        for (event, file) in walk.changed {
+            guard event.timestamp >= cutoff, !requireStableIDs || !event.dedupKey.isEmpty else { continue }
+            let token = TokenEvent(
+                provider: .claude,
+                timestamp: event.timestamp,
+                model: event.model,
+                inputTokens: event.inputTokens,
+                outputTokens: event.outputTokens,
+                cacheCreationTokens: event.cacheCreationTokens,
+                cacheReadTokens: event.cacheReadTokens,
+                recordID: event.dedupKey.isEmpty
+                    ? LogParseCache.recordID(file: file, timestamp: event.timestamp, occurrences: &occurrences)
+                    : event.dedupKey
+            )
+            if !event.dedupKey.isEmpty, let position = positions[event.dedupKey] {
+                let previous = out[position]
+                if token.model == previous.model,
+                   token.inputTokens >= previous.inputTokens, token.outputTokens >= previous.outputTokens,
+                   token.cacheCreationTokens >= previous.cacheCreationTokens,
+                   token.cacheReadTokens >= previous.cacheReadTokens {
+                    out[position] = token
+                }
+            } else {
+                if !event.dedupKey.isEmpty { positions[event.dedupKey] = out.count }
+                out.append(token)
+            }
+        }
+        return UsageSourceScan(events: out, files: walk.files, isComplete: walk.isComplete)
     }
 
     static func projectRoots() -> [URL] {

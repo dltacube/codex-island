@@ -1,6 +1,14 @@
 import Foundation
 
 enum UsageFetcher {
+    private static let session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.httpCookieStorage = nil
+        return URLSession(configuration: configuration)
+    }()
+
     // MARK: - Codex
 
     /// Codex usage lives at chatgpt.com/backend-api/wham/usage and accepts
@@ -8,7 +16,7 @@ enum UsageFetcher {
     /// and rarely rate-limited, so this is the easy half of the integration.
     static func fetchCodex(
         credentialData: Data? = nil,
-        send: (URLRequest) async throws -> (Data, URLResponse) = { try await URLSession.shared.data(for: $0) }
+        send: (URLRequest) async throws -> (Data, URLResponse) = { try await session.data(for: $0) }
     ) async -> AppUsage {
         guard let req = codexRequest(path: "usage", credentialData: credentialData) else {
             return errorPair("no codex auth")
@@ -120,7 +128,7 @@ enum UsageFetcher {
 
     static func fetchCodexResetCredits(
         credentialData: Data? = nil,
-        send: (URLRequest) async throws -> (Data, URLResponse) = { try await URLSession.shared.data(for: $0) }
+        send: (URLRequest) async throws -> (Data, URLResponse) = { try await session.data(for: $0) }
     ) async -> CodexResetCredits? {
         guard let req = codexRequest(path: "rate-limit-reset-credits", credentialData: credentialData) else { return nil }
 
@@ -193,7 +201,7 @@ enum UsageFetcher {
         req.setValue("claude-code/2.1.121", forHTTPHeaderField: "User-Agent")
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: req)
+            let (data, response) = try await session.data(for: req)
             guard let http = response as? HTTPURLResponse else {
                 return .otherError("bad response")
             }
