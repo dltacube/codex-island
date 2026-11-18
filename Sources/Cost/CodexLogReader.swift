@@ -9,10 +9,12 @@ import Foundation
 ///     accumulating `total_token_usage`, which is a known footgun for
 ///     forked sessions
 ///
-/// Per-file parse results are memoized in `~/Library/Caches/.../codex-parse-cache.v1.json`
-/// keyed by (path, mtime, size). Between two 5/15/30-minute polls almost no
-/// rollout file has changed, so the steady-state refresh skips re-parsing.
+/// Normal app refreshes retain only hashed (path, mtime, size) watermarks in the
+/// usage ledger and parse rollout files whose watermark changed. The former JSON
+/// cache is read once as migration input when available; refreshes never rewrite it.
 enum CodexLogReader {
+    /// Full-scan compatibility path used by parser tests. Normal app refreshes
+    /// use `incrementalScan` below.
     static func scan(lookbackDays: Int? = 30, root: URL? = nil) -> [TokenEvent] {
         let cutoff = lookbackDays.map { Date().addingTimeInterval(-Double($0) * 86400) } ?? .distantPast
         var out: [TokenEvent] = []
@@ -41,6 +43,42 @@ enum CodexLogReader {
             }
         )
         return out
+    }
+
+    static func incrementalScan(
+        context: UsageScanContext,
+        lookbackDays: Int? = nil,
+        root: URL? = nil
+    ) -> UsageSourceScan {
+        let cutoff = lookbackDays.map { Date().addingTimeInterval(-Double($0) * 86400) } ?? .distantPast
+        let walk = LogParseCache.incrementalWalk(
+            roots: [root ?? sessionsRoot()],
+            cutoff: cutoff,
+            cacheFilename: "codex-parse-cache.v1.json",
+            cacheVersion: cacheVersion,
+            context: context,
+            useLegacyCache: root == nil,
+            fileFilter: { $0.lastPathComponent.hasPrefix("rollout-") },
+            parse: parseFile(at:)
+        )
+        var occurrences: [String: Int] = [:]
+        let events = walk.changed.compactMap { event, file, state -> TokenEvent? in
+            guard event.timestamp >= cutoff else { return nil }
+            var token = TokenEvent(
+                provider: .codex,
+                timestamp: event.timestamp,
+                model: event.model,
+                inputTokens: event.inputTokens,
+                outputTokens: event.outputTokens,
+                cacheCreationTokens: 0,
+                cacheReadTokens: event.cacheReadTokens,
+                recordID: LogParseCache.recordID(file: file, timestamp: event.timestamp, occurrences: &occurrences)
+            )
+            token.sourceFileIdentity = state.identity
+            return token
+        }
+        return UsageSourceScan(events: events, files: walk.files,
+                               changedFileIdentities: walk.changedFileIdentities, isComplete: walk.isComplete)
     }
 
     private static func sessionsRoot() -> URL {

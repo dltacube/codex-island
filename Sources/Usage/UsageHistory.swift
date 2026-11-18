@@ -43,10 +43,17 @@ final class UsageHistoryStore: ObservableObject {
     /// Append the non-errored windows of a fresh fetch. Errored windows are
     /// skipped so a failed poll leaves a gap rather than a fabricated point.
     func record(provider: AlertEngine.Provider, usage: AppUsage, at: Date) {
-        var changed = append(provider, .fiveHour, usage.fiveHour, at)
-        changed = append(provider, .weekly, usage.weekly, at) || changed
-        changed = append(provider, .fableWeekly, usage.fableWeekly, at) || changed
-        changed = append(provider, .monthly, usage.monthly, at) || changed
+        record([(provider, usage)], at: at)
+    }
+
+    func record(_ readings: [(AlertEngine.Provider, AppUsage)], at: Date) {
+        var changed = false
+        for (provider, usage) in readings {
+            changed = append(provider, .fiveHour, usage.fiveHour, at) || changed
+            changed = append(provider, .weekly, usage.weekly, at) || changed
+            changed = append(provider, .fableWeekly, usage.fableWeekly, at) || changed
+            changed = append(provider, .monthly, usage.monthly, at) || changed
+        }
         if changed {
             persist()
             revision &+= 1

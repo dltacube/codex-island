@@ -6,6 +6,10 @@ enum L10n {
     static func tr(_ text: String, _ args: CVarArg...) -> String { String(format: text, arguments: args) }
 }
 
+private struct ParseCacheProbe: Codable, Equatable {
+    let value: Int
+}
+
 @main
 struct UsageLedgerTests {
     static let now = Date(timeIntervalSince1970: 1_789_070_400)
@@ -57,6 +61,20 @@ struct UsageLedgerTests {
         return Int(sqlite3_column_int64(statement, 0))
     }
 
+    static func double(_ url: URL, sql: String) throws -> Double {
+        var database: OpaquePointer?
+        guard sqlite3_open_v2(url.path, &database, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let database else {
+            throw TestError.database
+        }
+        defer { sqlite3_close(database) }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement else { throw TestError.database }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else { throw TestError.database }
+        return sqlite3_column_double(statement, 0)
+    }
+
     static func queryPlan(_ url: URL, sql: String, source: String) throws -> [String] {
         var database: OpaquePointer?
         guard sqlite3_open_v2(url.path, &database, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let database else {
@@ -89,10 +107,26 @@ struct UsageLedgerTests {
         let ledger = UsageLedger(url: url)
         let first = ledger.retain([event("one")], source: .claude, now: now)
         expect(first.saveError == nil && total(first.events) == 550, "capture preserves every token category")
+        expect(try integer(url, sql: "SELECT COUNT(*) FROM event_aliases WHERE alias_id=record_id") == 0,
+               "primary record identities do not create redundant self-alias rows")
         expect(ledger.retain([event("one")], source: .claude, now: now).events.count == 1, "repeated scans do not add usage")
         expect(ledger.retain(first.events, source: .claude, now: now).events.count == 1, "saved rows can be read and retained idempotently")
         let reopened = UsageLedger(url: url).retain([], source: .claude, now: now)
         expect(reopened.saveError == nil && total(reopened.events) == 550, "new instance reads saved counts without any provider records")
+
+        let preWatermarkURL = root.appendingPathComponent("pre-watermark.sqlite3")
+        let preWatermarkLedger = UsageLedger(url: preWatermarkURL)
+        _ = preWatermarkLedger.retain([event("existing-codex", provider: .codex)], source: .codex, now: now)
+        try execute(preWatermarkURL, sql: "DROP TABLE source_files;")
+        let preWatermarkContext = preWatermarkLedger.scanContext(source: .codex)
+        expect(!preWatermarkContext.needsBootstrap && preWatermarkContext.files.isEmpty,
+               "an existing ledger is recognized before file-watermark migration")
+
+        let portableURL = root.appendingPathComponent("portable-wal.sqlite3")
+        expect(try preWatermarkLedger.copyDatabase(to: portableURL), "an existing WAL archive can be copied for recovery")
+        let portableContext = UsageLedger(url: portableURL).scanContext(source: .codex)
+        expect(!portableContext.needsBootstrap,
+               "a portable WAL archive without sidecars is recognized without replaying retained events")
 
         let migrationURL = root.appendingPathComponent("index-migration.sqlite3")
         let migrationLedger = UsageLedger(url: migrationURL)
@@ -261,6 +295,117 @@ struct UsageLedgerTests {
         let retainedCodex = codexLedger.retain(CodexLogReader.scan(lookbackDays: nil, root: codexRoot), source: .codex, now: now)
         expect(retainedCodex.events.count == 2 && total(retainedCodex.events) == 260,
                "Codex event identity survives truncated source logs")
+
+        let migrationCacheRoot = root.appendingPathComponent("migration-cache")
+        try FileManager.default.createDirectory(at: migrationCacheRoot, withIntermediateDirectories: true)
+        let migrationCacheFile = migrationCacheRoot.appendingPathComponent("rollout-cached.jsonl")
+        try Data("cached fixture".utf8).write(to: migrationCacheFile)
+        let migrationDiscovered = LogParseCache.jsonlFiles(
+            under: migrationCacheRoot, modifiedAfter: .distantPast)
+        expect(migrationDiscovered.count == 1, "legacy migration fixture is discoverable")
+        let migrationEntry = migrationDiscovered[0]
+        let cachedProbe = ParseCacheProbe(value: 42)
+        let migrationCache = LogParseCache.ParseCache(
+            version: 1,
+            files: [migrationEntry.url.path: LogParseCache.CachedFile(
+                mtime: migrationEntry.mtime, size: migrationEntry.size,
+                events: [cachedProbe]
+            )]
+        )
+        expect(migrationCache.files[migrationEntry.url.path]?.matches(
+            mtime: migrationEntry.mtime, size: migrationEntry.size) == true,
+               "legacy migration fixture matches enumerated source metadata")
+        var migrationParseCount = 0
+        let migratedCache = LogParseCache.incrementalWalk(
+            roots: [migrationCacheRoot], cutoff: .distantPast,
+            cacheFilename: "unused.json", cacheVersion: 1,
+            context: UsageScanContext(files: [:], needsBootstrap: false),
+            useLegacyCache: false, migrationCache: migrationCache,
+            parse: { _ in migrationParseCount += 1; return [] }
+        )
+        expect(migrationParseCount == 0, "matching legacy migration entries avoid reparsing source files")
+        expect(migratedCache.changed.map(\.0) == [cachedProbe],
+               "initial watermarks replay matching legacy cache events through the ledger")
+        expect(migratedCache.changedFileIdentities.count == 1,
+               "legacy migration records the replayed source watermark")
+
+        let duplicateClaudeRoot = root.appendingPathComponent("claude-cross-file")
+        try FileManager.default.createDirectory(at: duplicateClaudeRoot, withIntermediateDirectories: true)
+        let completeClaudeFile = duplicateClaudeRoot.appendingPathComponent("complete.jsonl")
+        let partialClaudeFile = duplicateClaudeRoot.appendingPathComponent("partial.jsonl")
+        try Data(claudeRow("shared-call", output: 30).utf8).write(to: completeClaudeFile)
+        try Data(claudeRow("shared-call", output: 10).utf8).write(to: partialClaudeFile)
+        let duplicateClaudeURL = root.appendingPathComponent("claude-cross-file.sqlite3")
+        let duplicateClaudeLedger = UsageLedger(url: duplicateClaudeURL)
+        let duplicateInitialScan = ClaudeLogReader.incrementalScan(
+            context: duplicateClaudeLedger.scanContext(source: .claude), roots: [duplicateClaudeRoot])
+        let duplicateInitial = duplicateClaudeLedger.retain(duplicateInitialScan, source: .claude, now: now)
+        let duplicateProvenanceCount = try integer(
+            duplicateClaudeURL, sql: "SELECT COUNT(*) FROM source_file_events")
+        expect(duplicateInitial.events.map(\.outputTokens) == [30]
+               && duplicateProvenanceCount == 2,
+               "Claude incremental capture retains per-file rows and selects the complete duplicate")
+        try Data([
+            claudeRow("shared-call", output: 10),
+            claudeRow("new-call", output: 20, timestamp: "2026-01-09T02:00:00Z"),
+        ].joined(separator: "\n").utf8).write(to: partialClaudeFile)
+        let duplicateChangedScan = ClaudeLogReader.incrementalScan(
+            context: duplicateClaudeLedger.scanContext(source: .claude), roots: [duplicateClaudeRoot])
+        let duplicateChanged = duplicateClaudeLedger.retain(duplicateChangedScan, source: .claude, now: now)
+        expect(duplicateChanged.events.map(\.outputTokens).sorted() == [20, 30],
+               "a changed partial Claude copy cannot lower the complete row in an unchanged file")
+
+        let incrementalURL = root.appendingPathComponent("incremental-codex.sqlite3")
+        let incrementalLedger = UsageLedger(url: incrementalURL)
+        let initialContext = incrementalLedger.scanContext(source: .codex)
+        let initialScan = CodexLogReader.incrementalScan(context: initialContext, root: codexRoot)
+        let initialSaved = incrementalLedger.retain(initialScan, source: .codex, now: now)
+        expect(initialContext.needsBootstrap && initialScan.events.count == 1
+               && initialSaved.events.count == 1,
+               "a missing ledger bootstraps from every discovered source file")
+        let initialObservedAt = try double(incrementalURL,
+                                          sql: "SELECT observed_at FROM source_scans WHERE source='codex'")
+        let steadyContext = incrementalLedger.scanContext(source: .codex)
+        let steadyScan = CodexLogReader.incrementalScan(context: steadyContext, root: codexRoot)
+        let steadySaved = incrementalLedger.retain(steadyScan, source: .codex, now: now,
+                                                   observedAt: now.addingTimeInterval(60))
+        expect(!steadyContext.needsBootstrap && steadyContext.files.count == 1
+               && steadyScan.events.isEmpty && steadySaved.events.count == 1,
+               "an unchanged source scan submits no cached events for rewriting")
+        expect(try double(incrementalURL, sql: "SELECT observed_at FROM source_scans WHERE source='codex'")
+               == initialObservedAt,
+               "an unchanged incremental scan performs no capture transaction")
+        let codexThird = codexRow("2026-01-09T03:00:00Z", output: 60)
+        try Data([context, codexSecond, codexThird].joined(separator: "\n").utf8).write(to: codexFile)
+        let changedScan = CodexLogReader.incrementalScan(
+            context: incrementalLedger.scanContext(source: .codex), root: codexRoot)
+        let changedSaved = incrementalLedger.retain(changedScan, source: .codex, now: now)
+        expect(changedScan.events.count == 2 && changedSaved.events.count == 2,
+               "a changed source submits only that file while preserving retained history")
+        try FileManager.default.removeItem(at: codexFile)
+        let deletedScan = CodexLogReader.incrementalScan(
+            context: incrementalLedger.scanContext(source: .codex), root: codexRoot)
+        let afterSourceDeletion = incrementalLedger.retain(deletedScan, source: .codex, now: now)
+        expect(deletedScan.files.isEmpty && afterSourceDeletion.events.count == 2,
+               "source deletion removes only its scan watermark and preserves saved usage")
+        try Data([context, codexSecond, codexThird].joined(separator: "\n").utf8).write(to: codexFile)
+        try FileManager.default.removeItem(at: incrementalURL)
+        let rebuiltLedger = UsageLedger(url: incrementalURL)
+        let rebuiltScan = CodexLogReader.incrementalScan(
+            context: rebuiltLedger.scanContext(source: .codex), root: codexRoot)
+        let rebuilt = rebuiltLedger.retain(rebuiltScan, source: .codex, now: now)
+        expect(rebuiltScan.events.count == 2 && rebuilt.events.count == 2,
+               "deleting the ledger removes its watermarks and reconstructs history from source logs")
+
+        let noUsageRoot = root.appendingPathComponent("codex-no-usage")
+        try FileManager.default.createDirectory(at: noUsageRoot, withIntermediateDirectories: true)
+        try Data(context.utf8).write(to: noUsageRoot.appendingPathComponent("rollout-no-usage.jsonl"))
+        let noUsageLedger = UsageLedger(url: root.appendingPathComponent("codex-no-usage.sqlite3"))
+        let noUsageScan = CodexLogReader.incrementalScan(
+            context: noUsageLedger.scanContext(source: .codex), root: noUsageRoot)
+        _ = noUsageLedger.retain(noUsageScan, source: .codex, now: now)
+        expect(!noUsageLedger.scanContext(source: .codex).needsBootstrap,
+               "a parsed source with no usage is watermarked instead of being reparsed forever")
 
         let start = Date(timeIntervalSince1970: 1_767_884_400)
         let historicalDay = HistoricalUsageDay(provider: .claude, sourceIdentity: "verified-old-cache-day",

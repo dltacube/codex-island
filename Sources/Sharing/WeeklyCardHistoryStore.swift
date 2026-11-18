@@ -23,10 +23,11 @@ final class WeeklyCardHistoryStore: ObservableObject {
                 var buckets: [IslandProvider: [DailyTokenBucket]] = [:]
                 var partial = Set<IslandProvider>()
                 var saveErrors: [IslandProvider: String] = [:]
-                let claude = UsageLedger.shared.retain(ClaudeLogReader.scan(lookbackDays: nil),
-                                                       source: .claude, now: now, observedAt: now)
-                let codex = UsageLedger.shared.retain(CodexLogReader.scan(lookbackDays: nil),
-                                                      source: .codex, now: now, observedAt: now)
+                let ledger = UsageLedger.shared
+                let claudeScan = ClaudeLogReader.incrementalScan(context: ledger.scanContext(source: .claude))
+                let claude = ledger.retain(claudeScan, source: .claude, now: now, observedAt: now)
+                let codexScan = CodexLogReader.incrementalScan(context: ledger.scanContext(source: .codex))
+                let codex = ledger.retain(codexScan, source: .codex, now: now, observedAt: now)
                 buckets[.claude] = CostSummary.summarize(
                     events: claude.events + openCode.events.filter { $0.provider == .claude },
                     now: now, includeAllHistory: true, historicalDays: claude.historicalDays
